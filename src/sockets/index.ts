@@ -3,6 +3,7 @@ import type { Server as HttpServer } from "node:http";
 import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma.js";
 import type { AppServer, AppSocket, SocketData } from "./socket.types.js";
+import { isAllowedFrontendOrigin } from "../config/cors.js";
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -18,7 +19,9 @@ export function initSockets(server: HttpServer): AppServer {
     SocketData
   >(server, {
     cors: {
-      origin: process.env.FRONTEND_ORIGIN,
+      origin(origin, callback) {
+        callback(null, isAllowedFrontendOrigin(origin));
+      },
       credentials: true,
     },
   });
