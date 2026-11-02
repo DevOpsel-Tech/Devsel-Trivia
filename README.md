@@ -122,6 +122,8 @@ Las pruebas de integración (`npm run test:integration`) no usan la base de prá
 
 El reinicio acordado en el [reto 09](retos/09-relaciones.md) es una excepción puntual, con pérdida de los datos anteriores aceptada por el tutor. A partir de esa base se conserva la migración inicial y se crean migraciones nuevas para los siguientes retos. No repitas el borrado del historial ni el reset como solución habitual.
 
+El frontend vive en [trivia-app-frontend](https://github.com/josepracticas123/trivia-app-frontend). Después del reto 20 se completa el [reto 20B de jugabilidad](retos/20b-jugabilidad.md) en ambos repositorios, antes del despliegue (21) y la revisión final (22).
+
 ## Estructura y responsabilidades
 
 ```text
@@ -291,6 +293,7 @@ Todos parten como pendientes. **Implementado** significa que el alumno completó
 | 18 | [Añade avisos en tiempo real](retos/18-socket-io.md) | Pendiente |
 | 19 | [Recupera una partida al reconectar](retos/19-reconexion.md) | Pendiente |
 | 20 | [Conecta un frontend mínimo](retos/20-frontend.md) | Pendiente |
+| 20B | [Dale claridad a la experiencia de juego](retos/20b-jugabilidad.md) | Pendiente |
 | 21 | [Despliega backend, DB y frontend](retos/21-despliegue.md) | Pendiente |
 | 22 | [Entrega y revisión final](retos/22-entrega-final.md) | Pendiente |
 
