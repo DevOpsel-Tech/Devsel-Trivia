@@ -857,6 +857,17 @@ Un JWT tiene tres partes: cabecera, contenido y firma.
 - Dudas: pendiente.
 - PR y correcciones: pendiente.
 
+## 20B · Dale claridad a la experiencia de juego
+
+- Lo que he construido: pendiente.
+- Conceptos y explicación propia: pendiente.
+- Migración y contratos entre frontend/backend: pendiente.
+- Pruebas con dos cuentas, resultado y empate: pendiente.
+- Pruebas de errores, reconexión y CORS: pendiente.
+- Comandos y resultados por repositorio: pendiente.
+- Dudas: pendiente.
+- PR enlazados, correcciones y revisión: pendiente.
+
 ## 21 · Despliega backend, DB y frontend
 
 - Lo que he construido: pendiente.
