@@ -179,6 +179,7 @@ describe("POST /api/games/:id/answers - turnos multijugador", () => {
     vi.mocked(submitAnswer).mockResolvedValue({
       ok: true,
       mode: "MULTIPLAYER",
+      code: "ABCDEF",
       gameQuestionId: 12,
       roundComplete: true,
       finished: false,
@@ -245,8 +246,22 @@ describe("GET /api/games/:id - estado multijugador", () => {
       finishedAt: null,
       currentTurn: { userId: 2, turnOrder: 2, gameQuestionId: 12 },
       players: [
-        { userId: 1, turnOrder: 1, score: 0 },
-        { userId: 2, turnOrder: 2, score: 0 },
+        {
+          userId: 1,
+          displayName: "Ana",
+          turnOrder: 1,
+          isCreator: true,
+          isReady: true,
+          score: 0,
+        },
+        {
+          userId: 2,
+          displayName: "Luis",
+          turnOrder: 2,
+          isCreator: false,
+          isReady: false,
+          score: 0,
+        },
       ],
       winnerUserId: null,
       isDraw: false,
@@ -281,9 +296,26 @@ describe("GET /api/games/:id - estado multijugador", () => {
       gameQuestionId: 12,
     });
     expect(res.body.players).toEqual([
-      { userId: 1, turnOrder: 1, score: 0 },
-      { userId: 2, turnOrder: 2, score: 0 },
-    ]);
+  {
+    userId: 1,
+    displayName: "Ana",
+    turnOrder: 1,
+    isCreator: true,
+    isReady: true,
+    score: 0,
+  },
+  {
+    userId: 2,
+    displayName: "Luis",
+    turnOrder: 2,
+    isCreator: false,
+    isReady: false,
+    score: 0,
+  },
+]);
+
+expect(res.body.players[0]).not.toHaveProperty("email");
+expect(res.body.players[0]).not.toHaveProperty("passwordHash");
     expect(res.body.questions[0]).toMatchObject({
       answered: false,
       answeredCount: 1,
@@ -347,4 +379,3 @@ describe("POST /api/games/:id/start", () => {
     });
   });
 });
-

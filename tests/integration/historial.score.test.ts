@@ -58,10 +58,18 @@ async function limpiarBaseDeDatos() {
 
 async function crearEscenarioBase() {
   const usuarioA = await prisma.user.create({
-    data: { email: `hist-a-${Date.now()}@test.com`, passwordHash: "x" },
+    data: {
+      email: `hist-a-${Date.now()}@test.com`,
+      passwordHash: "x",
+      displayName: "Ana",
+    },
   });
   const usuarioB = await prisma.user.create({
-    data: { email: `hist-b-${Date.now()}@test.com`, passwordHash: "x" },
+    data: {
+      email: `hist-b-${Date.now()}@test.com`,
+      passwordHash: "x",
+      displayName: "Luis",
+    },
   });
   idsUsuarios.push(usuarioA.id, usuarioB.id);
 
@@ -103,7 +111,11 @@ async function crearPreguntaConOpciones(gameId: number, position: number) {
   // solution = 0 → la opción correcta es la de position 0.
   const correcta = gameQuestion.choices.find((c) => c.position === 0);
   const incorrecta = gameQuestion.choices.find((c) => c.position === 1);
-  return { gameQuestion, correctaId: correcta!.id, incorrectaId: incorrecta!.id };
+  return {
+    gameQuestion,
+    correctaId: correcta!.id,
+    incorrectaId: incorrecta!.id,
+  };
 }
 
 async function responder(
@@ -160,10 +172,8 @@ describe("GET /api/me/games — puntuación del usuario autenticado", () => {
 
   it("2. muestra solo aciertos propios tras completar la ronda", async () => {
     const { usuarioA, usuarioB, partida } = await crearEscenarioBase();
-    const { gameQuestion, correctaId, incorrectaId } = await crearPreguntaConOpciones(
-      partida.id,
-      0,
-    );
+    const { gameQuestion, correctaId, incorrectaId } =
+      await crearPreguntaConOpciones(partida.id, 0);
 
     await responder(gameQuestion.id, usuarioA.id, correctaId, true);
     await responder(gameQuestion.id, usuarioB.id, incorrectaId, false);
@@ -180,16 +190,36 @@ describe("GET /api/me/games — puntuación del usuario autenticado", () => {
 
     expect(itemA.score).toBe(1);
     expect(itemB.score).toBe(0);
+
+    expect(itemB.players).toEqual([
+      {
+        userId: usuarioA.id,
+        displayName: "Ana",
+        turnOrder: 1,
+        isCreator: false,
+        isReady: false,
+        score: 0,
+      },
+      {
+        userId: usuarioB.id,
+        displayName: "Luis",
+        turnOrder: 2,
+        isCreator: false,
+        isReady: false,
+        score: 0,
+      },
+    ]);
+
+    expect(itemB.players[0]).not.toHaveProperty("email");
+    expect(itemB.players[0]).not.toHaveProperty("passwordHash");
   });
 
   it("3. muestra puntuación completa y distinta para cada usuario al terminar", async () => {
     const { usuarioA, usuarioB, partida } = await crearEscenarioBase();
 
     for (let i = 0; i < 5; i++) {
-      const { gameQuestion, correctaId, incorrectaId } = await crearPreguntaConOpciones(
-        partida.id,
-        i,
-      );
+      const { gameQuestion, correctaId, incorrectaId } =
+        await crearPreguntaConOpciones(partida.id, i);
       const aciertaA = i < 3;
       const aciertaB = i >= 3;
 
@@ -209,7 +239,11 @@ describe("GET /api/me/games — puntuación del usuario autenticado", () => {
 
     await prisma.game.update({
       where: { id: partida.id },
-      data: { status: "FINISHED", finishedAt: new Date() },
+      data: {
+        status: "FINISHED",
+        finishedAt: new Date(),
+        winnerUserId: usuarioA.id,
+      },
     });
 
     const resA = await request(app)
@@ -224,14 +258,126 @@ describe("GET /api/me/games — puntuación del usuario autenticado", () => {
 
     expect(itemA.score).toBe(3);
     expect(itemB.score).toBe(2);
+    expect(itemA.winnerUserId).toBe(usuarioA.id);
+    expect(itemB.winnerUserId).toBe(usuarioA.id);
+    expect(itemA.isDraw).toBe(false);
+    expect(itemB.isDraw).toBe(false);
   });
 
-  it("4. historial y detalle coinciden para el mismo usuario y estado", async () => {
+  it("4. identifica un empate sin inventar un ganador", async () => {
     const { usuarioA, usuarioB, partida } = await crearEscenarioBase();
-    const { gameQuestion, correctaId, incorrectaId } = await crearPreguntaConOpciones(
-      partida.id,
-      0,
+
+    //Ambos fallan las cinco rondas: resultado final 0-0.
+    for (let i = 0; i < 5; i++) {
+      const { gameQuestion, incorrectaId } = await crearPreguntaConOpciones(
+        partida.id,
+        i,
+      );
+      await responder(gameQuestion.id, usuarioA.id, incorrectaId, false);
+      await responder(gameQuestion.id, usuarioB.id, incorrectaId, false);
+    }
+    await prisma.game.update({
+      where: { id: partida.id },
+      data: {
+        status: "FINISHED",
+        finishedAt: new Date(),
+        winnerUserId: null,
+      },
+    });
+
+    const historialA = await request(app)
+      .get("/api/me/games")
+      .set("Authorization", `Bearer ${tokenDe(usuarioA.id)}`);
+
+    const historialB = await request(app)
+      .get("/api/me/games")
+      .set("Authorization", `Bearer ${tokenDe(usuarioB.id)}`);
+
+    const itemA = historialA.body.items.find(
+      (item: any) => item.id === partida.id,
     );
+    const itemB = historialB.body.items.find(
+      (item: any) => item.id === partida.id,
+    );
+
+    expect(itemA.score).toBe(0);
+    expect(itemB.score).toBe(0);
+    expect(itemA.winnerUserId).toBeNull();
+    expect(itemB.winnerUserId).toBeNull();
+    expect(itemA.isDraw).toBe(true);
+    expect(itemB.isDraw).toBe(true);
+  });
+
+   it("5. devuelve una sala WAITING con código, creador y confirmaciones", async () => {
+    const { usuarioA, usuarioB, partida } = await crearEscenarioBase();
+
+    // Convertimos el escenario en una sala aún no iniciada.
+    await prisma.game.update({
+      where: { id: partida.id },
+      data: {
+        status: "WAITING",
+        code: "ABCDEF",
+      },
+    });
+
+    // A es creador y ya confirmó; B todavía no.
+    await prisma.gamePlayer.update({
+      where: {
+        gameId_userId: {
+          gameId: partida.id,
+          userId: usuarioA.id,
+        },
+      },
+      data: {
+        isCreator: true,
+        isReady: true,
+      },
+    });
+
+    const response = await request(app)
+      .get("/api/me/games")
+      .set("Authorization", `Bearer ${tokenDe(usuarioA.id)}`);
+
+    expect(response.status).toBe(200);
+
+    const item = response.body.items.find(
+      (game: any) => game.id === partida.id,
+    );
+
+    expect(item).toMatchObject({
+      id: partida.id,
+      mode: "MULTIPLAYER",
+      status: "WAITING",
+      code: "ABCDEF",
+      score: 0,
+      winnerUserId: null,
+      isDraw: false,
+      players: [
+        {
+          userId: usuarioA.id,
+          displayName: "Ana",
+          turnOrder: 1,
+          isCreator: true,
+          isReady: true,
+          score: 0,
+        },
+        {
+          userId: usuarioB.id,
+          displayName: "Luis",
+          turnOrder: 2,
+          isCreator: false,
+          isReady: false,
+          score: 0,
+        },
+      ],
+    });
+  });
+
+
+  it("6. historial y detalle coinciden para el mismo usuario y estado", async () => {
+    const { usuarioA, usuarioB, partida } = await crearEscenarioBase();
+    const { gameQuestion, correctaId, incorrectaId } =
+      await crearPreguntaConOpciones(partida.id, 0);
 
     await responder(gameQuestion.id, usuarioA.id, correctaId, true);
     await responder(gameQuestion.id, usuarioB.id, incorrectaId, false);
@@ -255,12 +401,15 @@ describe("GET /api/me/games — puntuación del usuario autenticado", () => {
     expect(historialB.status).toBe(200);
     expect(detalleB.status).toBe(200);
 
-    const itemA = historialA.body.items.find((i: any) => i.id === partida.id);
-    const itemB = historialB.body.items.find((i: any) => i.id === partida.id);
+    const itemA = historialA.body.items.find(
+      (item: any) => item.id === partida.id,
+    );
+    const itemB = historialB.body.items.find(
+      (item: any) => item.id === partida.id,
+    );
 
     expect(itemA.score).toBe(detalleA.body.score);
     expect(itemB.score).toBe(detalleB.body.score);
-
     expect(itemA.score).toBe(1);
     expect(itemB.score).toBe(0);
 

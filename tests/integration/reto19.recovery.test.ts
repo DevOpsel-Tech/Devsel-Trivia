@@ -89,8 +89,15 @@ function crearToken(userId: number, expiresIn: string | number = "1h"): string {
   });
 }
 
-function esperarEvento<T>(socket: AppClientSocket, event: string): Promise<T> {
-  return new Promise((resolve) => socket.once(event, resolve));
+function esperarEvento<T>(
+  socket: AppClientSocket,
+  event: string,
+): Promise<T> {
+  return new Promise<T>((resolve) => {
+    // Esta prueba espera tanto eventos propios como el reservado "connect".
+    // El cast queda encerrado aquí y conserva el tipo T en cada llamada.
+    socket.once(event as never, resolve as never);
+  });
 }
 
 async function entrarEnSala(socket: AppClientSocket, gameId: number) {
@@ -118,7 +125,11 @@ async function recuperarPartida(gameId: number, token: string) {
 async function crearUsuario(prefix: string) {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const user = await prisma.user.create({
-    data: { email: `${prefix}-${suffix}@example.test`, passwordHash: "no-se-usa" },
+    data: {
+      email: `${prefix}-${suffix}@example.test`,
+      passwordHash: "no-se-usa",
+      displayName: prefix,
+    },
   });
   userIds.push(user.id);
   return user;
@@ -156,6 +167,7 @@ describe("Reto 19: recuperación de estado", () => {
       data: {
         email: `recovery-${suffix}@example.test`,
         passwordHash: "no-se-usa-en-esta-prueba",
+        displayName: "Recovery",
       },
     });
     userIds.push(user.id);
@@ -202,8 +214,12 @@ describe("Reto 19: recuperación de estado", () => {
     });
     gameIds.push(game.id);
 
-    const firstQuestion = game.questions.find((question) => question.position === 0)!;
-    const secondQuestion = game.questions.find((question) => question.position === 1)!;
+    const firstQuestion = game.questions.find(
+      (question) => question.position === 0,
+    )!;
+    const secondQuestion = game.questions.find(
+      (question) => question.position === 1,
+    )!;
     const correctChoice = firstQuestion.choices.find(
       (choice) => choice.position === 0,
     )!;
@@ -289,7 +305,9 @@ describe("Reto 19: recuperación de estado", () => {
     socket.connect();
     await connected;
 
-    await expect(entrarEnSala(socket, game.id)).resolves.toEqual({ gameId: game.id });
+    await expect(entrarEnSala(socket, game.id)).resolves.toEqual({
+      gameId: game.id,
+    });
     const recovered = await recuperarPartida(game.id, token);
     expect(recovered).toMatchObject({
       id: game.id,
@@ -318,26 +336,54 @@ describe("Reto 19: recuperación de estado", () => {
 
     // En producción el cliente podría perder este body; el commit y el aviso
     // sí se producen. Comprobamos el flujo de recuperación posterior.
-    const updated = esperarEvento<{ turnVersion: number }>(socket, "game:updated");
-    const accepted = await fetch(`http://localhost:${port}/api/games/${game.id}/answers`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ gameQuestionId: question.id, choiceId: choice.id }),
-    });
+    const updated = esperarEvento<{ turnVersion: number }>(
+      socket,
+      "game:updated",
+    );
+    const accepted = await fetch(
+      `http://localhost:${port}/api/games/${game.id}/answers`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          gameQuestionId: question.id,
+          choiceId: choice.id,
+        }),
+      },
+    );
     expect(accepted.status).toBe(200);
     expect((await updated).turnVersion).toBe(1);
 
     const recovered = await recuperarPartida(game.id, token);
-    expect(recovered).toMatchObject({ turnVersion: 1, score: 1, nextQuestionId: game.questions[1].id });
-    expect(recovered.questions[0]).toMatchObject({ id: question.id, answered: true });
+    expect(recovered).toMatchObject({
+      turnVersion: 1,
+      score: 1,
+      nextQuestionId: game.questions[1].id,
+    });
+    expect(recovered.questions[0]).toMatchObject({
+      id: question.id,
+      answered: true,
+    });
 
     // La consulta evita reintentar. Incluso ante un reintento accidental, la
     // protección persistida no crea una segunda respuesta ni otro avance.
-    const retry = await fetch(`http://localhost:${port}/api/games/${game.id}/answers`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ gameQuestionId: question.id, choiceId: choice.id }),
-    });
+    const retry = await fetch(
+      `http://localhost:${port}/api/games/${game.id}/answers`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          gameQuestionId: question.id,
+          choiceId: choice.id,
+        }),
+      },
+    );
     expect(retry.status).toBe(409);
     expect((await retry.json()).error.code).toBe("ALREADY_ANSWERED");
     const persisted = await prisma.game.findUniqueOrThrow({
@@ -370,7 +416,10 @@ describe("Reto 19: recuperación de estado", () => {
       auth: { token: expired },
     }) as AppClientSocket;
     clients.push(expiredSocket);
-    const deniedConnection = esperarEvento<Error>(expiredSocket, "connect_error");
+    const deniedConnection = esperarEvento<Error>(
+      expiredSocket,
+      "connect_error",
+    );
     expiredSocket.connect();
     expect((await deniedConnection).message).toContain("inválido");
 
@@ -384,13 +433,19 @@ describe("Reto 19: recuperación de estado", () => {
     const connected = esperarEvento<void>(outsiderSocket, "connect");
     outsiderSocket.connect();
     await connected;
-    const deniedRoom = esperarEvento<{ message: string }>(outsiderSocket, "error:game");
+    const deniedRoom = esperarEvento<{ message: string }>(
+      outsiderSocket,
+      "error:game",
+    );
     outsiderSocket.emit("join:game", game.id);
     expect((await deniedRoom).message).toBe("No participas en esta partida");
 
-    const response = await fetch(`http://localhost:${port}/api/games/${game.id}`, {
-      headers: { Authorization: `Bearer ${outsiderToken}` },
-    });
+    const response = await fetch(
+      `http://localhost:${port}/api/games/${game.id}`,
+      {
+        headers: { Authorization: `Bearer ${outsiderToken}` },
+      },
+    );
     expect(response.status).toBe(403);
   });
 });

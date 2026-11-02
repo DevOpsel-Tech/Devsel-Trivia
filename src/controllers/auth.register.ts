@@ -17,6 +17,7 @@ export async function registerController(req: Request, res: Response) {
   const usuario = await registerUser(
     resultadoValidacion.data.email, // email normalizado por zod, trim + minúsculas
     resultadoValidacion.data.password, // tal cual lo escribe el usuario.
+    resultadoValidacion.data.displayName, // Nombre normalizado por Zod, sin espacios exteriores.
   );
 
   // Si el servicio devuelve null o email duplicado, error 409.
@@ -28,5 +29,6 @@ export async function registerController(req: Request, res: Response) {
   return res.status(201).json({
     id: usuario.id,
     email: usuario.email,
+    displayName: usuario.displayName,
   });
 }

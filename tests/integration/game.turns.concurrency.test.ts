@@ -35,6 +35,7 @@ beforeAll(async () => {
       data: {
         email: `${etiqueta}-${Date.now()}-${Math.random()}@test.com`,
         passwordHash: "x",
+        displayName: etiqueta,
       },
     });
     idsUsuarios.push(usuario.id);
