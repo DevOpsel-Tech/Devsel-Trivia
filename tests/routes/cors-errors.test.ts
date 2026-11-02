@@ -31,6 +31,26 @@ describe("CORS en errores de entrada", () => {
       "http://localhost:5173",
     );
   });
+
+  it("acepta cada origen incluido en la lista permitida", async () => {
+    const res = await request(app)
+      .options("/api/auth/login")
+      .set("Origin", "https://frontend.example.test")
+      .set("Access-Control-Request-Method", "POST");
+
+    expect(res.headers["access-control-allow-origin"]).toBe(
+      "https://frontend.example.test",
+    );
+  });
+
+  it("no concede CORS a un origen no permitido", async () => {
+    const res = await request(app)
+      .options("/api/auth/login")
+      .set("Origin", "https://no-autorizado.example.test")
+      .set("Access-Control-Request-Method", "POST");
+
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+  });
   it("cuerpo demasiado grande devuelve 413 con CORS", async () => {
     // Genera un body mayor de 100 KB.
     const bodyGrande = JSON.stringify({

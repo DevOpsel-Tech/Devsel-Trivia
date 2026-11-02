@@ -16,6 +16,7 @@ import { meController } from "./controllers/auth.controller.js";
 import { gameRouter } from "./routes/games.routes.js";
 import { meRouter } from "./routes/me.routes.js";
 import cors from "cors";
+import { isAllowedFrontendOrigin } from "./config/cors.js";
 
 // Importa los middlewares de manejo de errores.
 import {
@@ -30,7 +31,9 @@ export const app = express();
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_ORIGIN,
+    origin(origin, callback) {
+      callback(null, isAllowedFrontendOrigin(origin) ? origin : false);
+    },
     credentials: true,
   })
 );
