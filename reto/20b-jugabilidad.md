@@ -67,10 +67,10 @@ Prueba con dos cuentas en perfiles de navegador diferentes. Si se usan túneles,
 - [x] Antes de cerrar una ronda ninguna pantalla, incluido el historial, revela el acierto pendiente del primer jugador.
 - [x] Dos cuentas completan una partida: una ve «Ganaste», la otra «Perdiste», con los mismos nombres y puntos. Otra partida termina en empate y ambas lo muestran.
 - [x] Volver al historial, reconectar y reabrir la partida conserva el resultado correcto; sesión caducada conduce al login y un estado retrasado no hace retroceder la pantalla.
-- [x] Login, registro y acciones autenticadas funcionan desde los orígenes locales y de túnel configurados, incluido preflight de Authorization. Un origen ajeno no obtiene autorización CORS; JWT y permisos siguen siendo obligatorios.
+- [ ] Login, registro y acciones autenticadas funcionan desde los orígenes locales y de túnel configurados, incluido preflight de Authorization. Un origen ajeno no obtiene autorización CORS; JWT y permisos siguen siendo obligatorios.
 - [x] Swagger y tipos reflejan entradas, campos nuevos y errores. La migración y las pruebas de DB se ensayan en una base separada con su protección y limpieza por IDs.
 - [x] Hay pruebas relevantes de nombres/perfil, puntuación pública y permisos, además de evidencias del recorrido visual. `typecheck` y `build` pasan en ambos repos y la suite habitual del backend pasa.
-- [x] `APRENDIZAJE.md` y el registro de este reto describen pruebas reales y limitaciones. Hay un PR hacia `develop` en cada repo, enlazados entre sí y abiertos para revisión.
+- [ ] `APRENDIZAJE.md` y el registro de este reto describen pruebas reales y limitaciones. Falta crear el PR del frontend hacia `develop` y enlazarlo con el PR #26 del backend.
 
 ## Cómo trabajar las dos ramas
 
@@ -84,14 +84,14 @@ Enseña dos cuentas con nombres distintos: crear sala, copiar código, entrar, c
 
 ## Registro de entrega y revisión
 
-Estado: **Pendiente**. Los checks son autoevaluación; el tutor confirma el cierre.
+Estado: **Implementado y probado; pendiente de PR y revisión**. Los checks son autoevaluación; el tutor confirma el cierre.
 
-- PR y commits de backend/frontend: backend en la rama `reto/20b-jugabilidad`, con el commit `666ed97` («feat: add public player names and game room contracts»). Quedan por crear/enlazar el PR hacia `develop` y el PR del frontend.
+- PR y commits de backend/frontend: backend en la rama `reto/20b-jugabilidad`, con el commit `666ed97` («feat: add public player names and game room contracts») y PR #26. Falta crear la rama y el PR del frontend hacia `develop`, enlazándolo con dicho PR.
 - Migración ensayada y datos conservados: ensayo completado en `trivia_test_legacy_20b`, una base local aislada creada con el esquema anterior. Se insertaron usuario con hash Argon2, partida, participante, respuesta y puntuación; Prisma aplicó `20261102103820_add_user_display_name`. Se comprobó login, nombre inicial `Jugador 1`, cambio de nombre y conservación de IDs, relaciones, respuesta y puntuación.
-- Pruebas automatizadas y comandos por repo: backend comprobado el 03/11/2026 con `npm.cmd run typecheck`, `npm.cmd test` (119 superadas, 1 omitida), `npm.cmd run build` y `npm.cmd run test:integration` (30/30 superadas). Pendiente ejecutar y registrar los comandos equivalentes del frontend.
-- Mejora opcional aplicada: `displayNameSchema` compartido por registro y perfil, sin cambiar las reglas ni los mensajes de validación.
-- Prueba con dos cuentas (ganador/perdedor y empate): pendiente de realizar desde el frontend.
-- Prueba de fallo, reconexión y sala eliminada: la recuperación y permisos están cubiertos por integración del backend; falta la prueba visual conjunta de error, reconexión y sala eliminada.
+- Pruebas automatizadas y comandos por repo: backend comprobado el 03/11/2026 con `npm.cmd run typecheck`, `npm.cmd test` (119 superadas, 1 omitida), `npm.cmd run build` y `npm.cmd run test:integration` (30/30 superadas). Frontend comprobado el 03/11/2026 con `npm.cmd run typecheck` y `npm.cmd run build`, ambos correctos.
+- Mejora opcional aplicada: `displayNameSchema` compartido por registro y perfil, sin cambiar las reglas ni los mensajes de validación. En frontend se extrajeron participantes, marcador y resultado de `GameRoom` en componentes de presentación.
+- Prueba con dos cuentas (ganador/perdedor y empate): realizada desde el frontend con dos perfiles de navegador. Cada cuenta vio el resultado desde su perspectiva y se comprobó un empate.
+- Prueba de fallo, reconexión y sala eliminada: realizada visualmente. El rival recibió `game:deleted` y volvió al historial al borrar la sala; una desconexión temporal se recuperó y `io server disconnect` por JWT caducado llevó al login.
 - Orígenes locales/túneles utilizados y resultados CORS: pruebas locales con `FRONTEND_ORIGIN=http://localhost:5173` en el entorno aislado. Pendiente comprobar el frontend y, si se usa, documentar el origen de un túnel.
 - Dudas o limitaciones conocidas: en este equipo `npm run seed` falla dentro de `tsx` por un error temporal de memoria de Windows; tras compilar, `node dist/lib/seed.js` cargó correctamente el catálogo en `trivia_test`. No afecta a las suites ya aprobadas.
 - Revisión, aprobación y merges del tutor: pendiente.
