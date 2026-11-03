@@ -859,14 +859,15 @@ Un JWT tiene tres partes: cabecera, contenido y firma.
 
 ## 20B · Dale claridad a la experiencia de juego
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Migración y contratos entre frontend/backend: pendiente.
-- Pruebas con dos cuentas, resultado y empate: pendiente.
-- Pruebas de errores, reconexión y CORS: pendiente.
-- Comandos y resultados por repositorio: pendiente.
-- Dudas: pendiente.
-- PR enlazados, correcciones y revisión: pendiente.
+- Lo que he construido (backend): añadí `displayName` al usuario, obligatorio en el registro (2–30 caracteres tras recortar espacios), y el perfil autenticado `GET/PATCH /api/me`. El `PATCH` solo acepta el nombre propio; no permite cambiar ID, rol, email ni puntuación.
+- Contratos: login, perfil, detalle de partida e historial devuelven nombres públicos. En multijugador, participantes incluyen `userId`, `displayName`, `turnOrder`, `isCreator`, `isReady` y puntuación pública. El detalle y el historial incluyen `winnerUserId` e `isDraw` para que el frontend presente victoria, derrota o empate sin calcularlo.
+- Migración: `20261102103820_add_user_display_name` agrega primero una columna opcional, asigna `Jugador <id>` a cuentas existentes y después la hace obligatoria; así conserva usuarios y sus relaciones.
+- Privacidad y puntuación: no se exponen emails ni hashes del rival. La puntuación del primer jugador permanece oculta mientras la ronda está pendiente; al responder ambos se publica la ronda cerrada.
+- Pruebas automatizadas: `npm.cmd run typecheck`, `npm.cmd test` (119 superadas, 1 omitida), `npm.cmd run build` y `npm.cmd run test:integration` (29/29 superadas) completadas el 03/11/2026.
+- Base de pruebas: configuré PostgreSQL local con una base aislada llamada `trivia_test`, a la que se aplicaron las 9 migraciones. El entorno `tests/.env.test`, ignorado por Git, contiene `DATABASE_URL`, `JWT_SECRET` y `FRONTEND_ORIGIN`; no se usan bases de Railway ni producción para pruebas destructivas.
+- Correcciones durante la prueba: actualicé expectativas de integración que aún esperaban el contrato anterior, sin `displayName`, `isCreator` ni `isReady`, y que no consideraban pública la puntuación tras cerrar una ronda. El seed con `tsx` falló en este equipo con un error temporal de memoria de Windows; tras compilar, `node dist/lib/seed.js` cargó las preguntas en `trivia_test` correctamente.
+- Pendiente de frontend: mostrar nombres y «Tú», organizar el historial por estado y paginarlo, recuperar/copiar el código de sala, enseñar confirmaciones, estado de turno/progreso, bloqueo de envíos y la pantalla final de ganar/perder/empate.
+- Pendiente de validación conjunta: recorrido visual con dos cuentas (victoria, derrota, empate, reconexión y sala eliminada), capturas/evidencias, y PRs enlazados de frontend y backend hacia `develop`.
 
 ## 21 · Despliega backend, DB y frontend
 

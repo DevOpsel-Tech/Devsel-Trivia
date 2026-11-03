@@ -56,9 +56,9 @@ Prueba con dos cuentas en perfiles de navegador diferentes. Si se usan túneles,
 
 ## Comprueba tu entrega
 
-- [ ] Un usuario nuevo se registra con nombre válido; nombres vacíos, fuera de longitud o entradas de tipo incorrecto dan 400 en la API. Dos nombres iguales no mezclan identidades.
+- [x] Un usuario nuevo se registra con nombre válido; nombres vacíos, fuera de longitud o entradas de tipo incorrecto dan 400 en la API. Dos nombres iguales no mezclan identidades.
 - [ ] Los usuarios anteriores siguen pudiendo iniciar sesión y conservan sus partidas, respuestas y puntos después de la migración. El nombre inicial se puede cambiar.
-- [ ] Cambiar el nombre solo modifica el perfil autenticado; enviar `role`, un ID ajeno u otros campos no permite modificar privilegios ni otra cuenta.
+- [x] Cambiar el nombre solo modifica el perfil autenticado; enviar `role`, un ID ajeno u otros campos no permite modificar privilegios ni otra cuenta.
 - [ ] Sala y resultado muestran nombres y «Tú» sin publicar emails del rival, contraseñas ni hashes.
 - [ ] Las tarjetas distinguen espera, juego y finalización; carga, vacío, error y paginación tienen una presentación útil.
 - [ ] Al volver a una sala en espera se recupera su código y se puede copiar. Se ve quién entró y quién confirmó; no se inicia hasta que ambos confirman.
@@ -86,13 +86,13 @@ Enseña dos cuentas con nombres distintos: crear sala, copiar código, entrar, c
 
 Estado: **Pendiente**. Los checks son autoevaluación; el tutor confirma el cierre.
 
-- PR y commits de backend/frontend: pendiente.
-- Migración ensayada y datos conservados: pendiente.
-- Pruebas automatizadas y comandos por repo: pendiente.
-- Prueba con dos cuentas (ganador/perdedor y empate): pendiente.
-- Prueba de fallo, reconexión y sala eliminada: pendiente.
-- Orígenes locales/túneles utilizados y resultados CORS: pendiente.
-- Dudas o limitaciones conocidas: pendiente.
+- PR y commits de backend/frontend: backend en la rama `reto/20b-jugabilidad`, con el commit `666ed97` («feat: add public player names and game room contracts»). Quedan por crear/enlazar el PR hacia `develop` y el PR del frontend.
+- Migración ensayada y datos conservados: migración `20261102103820_add_user_display_name` aplicada en la base aislada local `trivia_test`. Añade el nombre de forma compatible y asigna `Jugador <id>` a usuarios existentes antes de hacerlo obligatorio. Falta ensayarla con una copia que contenga datos reales previos.
+- Pruebas automatizadas y comandos por repo: backend comprobado el 03/11/2026 con `npm.cmd run typecheck`, `npm.cmd test` (119 superadas, 1 omitida), `npm.cmd run build` y `npm.cmd run test:integration` (29/29 superadas). Pendiente ejecutar y registrar los comandos equivalentes del frontend.
+- Prueba con dos cuentas (ganador/perdedor y empate): pendiente de realizar desde el frontend.
+- Prueba de fallo, reconexión y sala eliminada: la recuperación y permisos están cubiertos por integración del backend; falta la prueba visual conjunta de error, reconexión y sala eliminada.
+- Orígenes locales/túneles utilizados y resultados CORS: pruebas locales con `FRONTEND_ORIGIN=http://localhost:5173` en el entorno aislado. Pendiente comprobar el frontend y, si se usa, documentar el origen de un túnel.
+- Dudas o limitaciones conocidas: en este equipo `npm run seed` falla dentro de `tsx` por un error temporal de memoria de Windows; tras compilar, `node dist/lib/seed.js` cargó correctamente el catálogo en `trivia_test`. No afecta a las suites ya aprobadas.
 - Revisión, aprobación y merges del tutor: pendiente.
 
 [Volver al README](../README.md) · [Reto 20](20-frontend.md) · [Reto 21](21-despliegue.md)

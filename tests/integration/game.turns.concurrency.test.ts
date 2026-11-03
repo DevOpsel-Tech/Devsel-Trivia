@@ -138,8 +138,22 @@ describe("Turnos multijugador reales", () => {
     // GET como jugador 2: sabe que P1 respondió, pero no si acertó.
     const estadoPendiente = await getGameById(game.id, jugador2);
     expect(estadoPendiente!.players).toEqual([
-      { userId: jugador1, turnOrder: 1, score: 0 },
-      { userId: jugador2, turnOrder: 2, score: 0 },
+      {
+        userId: jugador1,
+        displayName: "reto17-p1",
+        turnOrder: 1,
+        isCreator: true,
+        isReady: false,
+        score: 0,
+      },
+      {
+        userId: jugador2,
+        displayName: "reto17-p2",
+        turnOrder: 2,
+        isCreator: false,
+        isReady: false,
+        score: 0,
+      },
     ]);
     expect(estadoPendiente!.currentTurn).toEqual({
       userId: jugador2,
@@ -323,8 +337,22 @@ describe("Turnos multijugador reales", () => {
 
     const estado = await getGameById(game.id, jugador2);
     expect(estado!.players).toEqual([
-      { userId: jugador1, turnOrder: 1, score: 5 },
-      { userId: jugador2, turnOrder: 2, score: 2 },
+      {
+        userId: jugador1,
+        displayName: "reto17-p1",
+        turnOrder: 1,
+        isCreator: true,
+        isReady: false,
+        score: 5,
+      },
+      {
+        userId: jugador2,
+        displayName: "reto17-p2",
+        turnOrder: 2,
+        isCreator: false,
+        isReady: false,
+        score: 2,
+      },
     ]);
     expect(estado!.winnerUserId).toBe(jugador1);
     expect(estado!.isDraw).toBe(false);

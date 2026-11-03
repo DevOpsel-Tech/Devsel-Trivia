@@ -198,7 +198,7 @@ describe("GET /api/me/games — puntuación del usuario autenticado", () => {
         turnOrder: 1,
         isCreator: false,
         isReady: false,
-        score: 0,
+        score: 1,
       },
       {
         userId: usuarioB.id,
