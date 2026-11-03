@@ -1,11 +1,26 @@
 import { apiRequest } from "./http";
-// Campos que incluye en cada partida del historial
+// Datos públicos de un participante. Nunca contiene el email ni credenciales
+export type GamePlayer = {
+  userId: number;
+  displayName: string;
+  turnOrder: number;
+  score: number; //Puntuación única no revela una ronda incompleta.
+  isReady: boolean;
+  isCreator: boolean;
+};
+
+//Cada tarjeta de GET /api/me/games
 export type GameHistoryItem = {
   id: number;
+  mode: "INDIVIDUAL" | "MULTIPLAYER";
   status: "WAITING" | "ACTIVE" | "FINISHED";
-  createdAt: string;
-  finishedAt: string | null;
+  code: string | null;
+  createdAt: string; //ISO 8601
+  finishedAt: string | null; //ISO 8601
   score: number;
+  players: GamePlayer[];
+  winnerUserId: number | null; //null si no hay ganador
+  isDraw: boolean; //true si hay empate
 };
 
 // La respuesta completa de GET /api/me/games
@@ -42,7 +57,6 @@ export function createMultiplayerGame(token: string) {
   });
 }
 export function joinMultiplayerGame(token: string, code: string) {
-  
   return apiRequest<{ id: number; status: string }>("/api/games/join", {
     method: "POST",
     token,
@@ -60,24 +74,38 @@ export function deleteWaitingGame(token: string, gameId: number) {
 export type GameDetails = {
   id: number;
   status: "WAITING" | "ACTIVE" | "FINISHED";
-  players: {
-    userId: number;
-    turnOrder: number;
-    score: number;
-    isReady: boolean;
-  }[];
+  mode: "MULTIPLAYER";
+  code: string | null;
+  turnVersion: number; //Incrementa cada vez que un jugador responde o se une a la partida.
+  createdAt: string; //ISO 8601
+  finishedAt: string | null; //ISO 8601
+  score: number; //Puntuación única no revela una ronda incompleta.
+  nextQuestionId: number | null; // null si no hay más preguntas
+  players: GamePlayer[];
+  winnerUserId: number | null; //null si no hay ganador
+  isDraw: boolean; //true si hay empate
   currentTurn: {
     userId: number;
+    turnOrder: number;
     gameQuestionId: number;
   } | null;
-
   questions: {
     id: number;
+    position: number;
     statement: string;
     answered: boolean;
+    answeredCount: number;
+    revealed: boolean;
+    results:
+      | {
+          userId: number;
+          isCorrect: boolean;
+        }[]
+      | null;
     choices: {
       id: number;
       text: string;
+      position: number;
     }[];
   }[];
 };
@@ -90,10 +118,7 @@ export function startMultiplayerGame(token: string, gameId: number) {
     id: number;
     status: "WAITING" | "ACTIVE";
     started: boolean;
-  }>(
-    `/api/games/${gameId}/start`,
-    { method: "POST", token },
-  );
+  }>(`/api/games/${gameId}/start`, { method: "POST", token });
 }
 export function submitAnswer(
   token: string,

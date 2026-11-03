@@ -13,7 +13,10 @@ type Screen = "welcome" | "home" | "register" | "login" | "lobby" | "room";
 
 function AppBackground() {
   return (
-    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
+    <div
+      className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+      aria-hidden="true"
+    >
       <LetterGlitch
         className="absolute inset-0"
         glitchColors={["#FFFFFF", "#61DCA3"]}
@@ -41,11 +44,16 @@ function App() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [sessionUserId, setSessionUserId] = useState<number | null>(null);
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
+  // Nombre público del usuario autenticado, devuelto por POST /api/auth/login.
+  const [sessionDisplayName, setSessionDisplayName] = useState<string | null>(
+    null,
+  );
   const [isEntering, setIsEntering] = useState(false);
   const handleAuthenticationError = useCallback(() => {
     setSessionToken(null);
     setSessionUserId(null);
     setSelectedGameId(null);
+    setSessionDisplayName(null);
     setLoginNotice("Tu sesión ha caducado. Inicia sesión de nuevo.");
     setScreen("login");
   }, []);
@@ -112,13 +120,17 @@ function App() {
           <p className="mt-5 max-w-sm text-base leading-7 text-[#D4D4D4]">
             Entra, crea una sala y reta a quien más sabe.
           </p>
-
         </section>
       </main>
     );
   }
 
-  if (screen === "room" && selectedGameId && sessionToken && sessionUserId !== null) {
+  if (
+    screen === "room" &&
+    selectedGameId &&
+    sessionToken &&
+    sessionUserId !== null
+  ) {
     return (
       <main className="relative isolate min-h-screen overflow-hidden bg-[#090909]/90 px-4 py-6 text-[#F8FAFC] sm:py-10">
         <AppBackground />
@@ -142,10 +154,14 @@ function App() {
         <div className="relative z-10 mx-auto max-w-4xl">
           <GameLobby
             token={sessionToken}
+            userId={sessionUserId!}
+            displayName={sessionDisplayName ?? ""}
+            onDisplayNameUpdated={setSessionDisplayName}
             onLogout={() => {
               setSessionToken(null);
               setScreen("home");
               setSessionUserId(null);
+              setSessionDisplayName(null);
             }}
             onOpenGame={(gameId) => {
               setSelectedGameId(gameId);
@@ -195,6 +211,7 @@ function App() {
                 // Guardamos el token para usarlo en las peticiones autenticadas.
                 setSessionToken(response.token);
                 setSessionUserId(response.user.id);
+                setSessionDisplayName(response.user.displayName);
                 // Quitamos el aviso de registro después del login.
                 setLoginNotice("");
 

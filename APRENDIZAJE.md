@@ -1,11 +1,14 @@
-# 20 · Conecta un frontend mínimo
+# 20B · Dale claridad a la experiencia de juego
 
-- Lo que he construido: registro y login contra la API, sesión JWT solo en memoria, listado de partidas, creación y entrada por código, sala, inicio y envío de respuestas. La sala se conecta con Socket.IO autenticado y, al recibir `joined:game`, vuelve a pedir el estado actual de la partida.
-- Conceptos y explicación propia: el frontend valida la experiencia (campos requeridos y bloquear botones mientras una petición está en curso), pero el backend es quien autoriza cada acción y comprueba que el turno, la partida y la respuesta sean válidos. El JWT se mantiene en estado de React, por lo que se pierde al recargar.
-- Pruebas y resultados: `npm.cmd run lint`, `npm.cmd run typecheck` y `npm.cmd run build` pasan el 30/10/2026. El frontend responde `200` en `http://127.0.0.1:5173/`; el backend responde `400 VALIDATION_ERROR` al enviar un login vacío y permite el origen del frontend. En la prueba manual, al terminar una partida la sala mostró el estado de completada y el historial la mostró como finalizada.
+- Lo que he construido: registro con nombre público, login con `displayName`, edición del perfil propio, historial paginado y filtrable, creación y entrada por código, preparación de ambos jugadores, eliminación de salas en espera por su creador, sala con Socket.IO y resultado final. El historial y la sala muestran «Tú», el rival y únicamente las puntuaciones públicas que entrega el backend.
+- Conceptos y explicación propia: el frontend mejora la experiencia, pero el backend sigue siendo la fuente de verdad para permisos, turnos, puntos y ganador. Socket.IO avisa de cambios y el cliente recupera el estado persistido con `GET /api/games/:id`; `turnVersion` evita aplicar snapshots atrasados. El JWT solo vive en memoria y, si caduca, se vuelve al login.
+- Pruebas y resultados: se probó el recorrido con dos cuentas en perfiles de navegador distintos: crear sala, copiar código desde la tarjeta, entrar, confirmar ambos jugadores, jugar, mostrar ganador/perdedor, mostrar empate, volver al historial, reabrir el resultado y recuperar el estado al reconectar. También se comprobó la eliminación de una sala en espera. El 03/11/2026 pasan `npm.cmd run typecheck` y `npm.cmd run build` en el frontend.
+- Decisión de interfaz: el código de invitación se muestra y se copia desde la tarjeta de una sala en espera; se comparte por un canal externo. Las invitaciones internas a usuarios conectados quedan fuera de este reto.
 - Error y solución: PowerShell bloqueaba `npm.ps1` por la política de ejecución; los comandos se ejecutan como `npm.cmd run ...`.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- Limitaciones conocidas: los filtros del historial se aplican a las partidas de la página cargada. Una invitación interna requeriría nuevos endpoints y eventos Socket.IO en el backend.
+- PR y correcciones: pendiente de crear/enlazar el PR del frontend hacia `develop`.
+
+## Notas anteriores del reto 20
 
 ## Punto de reanudación — 29/10/2026
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { ApiError } from "../api/http";
 import { env } from "../config/env";
@@ -24,18 +24,43 @@ export function GameRoom({
   onAuthenticationError,
 }: GameRoomProps) {
   const [game, setGame] = useState<GameDetails | null>(null);
+  // Impide que una respuesta HTTP más antigua reemplace un estado más reciente.
+  const latestTurnVersion = useRef(-1);
   const [error, setError] = useState("");
   const [isStarting, setIsStarting] = useState(false);
   const [selectedChoiceId, setSelectedChoiceId] = useState<number | null>(null);
   const [isAnswerSending, setIsAnswerSending] = useState(false);
+  const [socketNotice, setSocketNotice] = useState("");
+  // Evita pulsar varias veces mientras recuperamos el estado de la partida.
+  const [isRefreshingGame, setIsRefreshingGame] = useState(false);
+
   const loadGame = useCallback(async () => {
     try {
       const response = await getGame(token, gameId);
-      setGame(response);
+      if (response.turnVersion >= latestTurnVersion.current) {
+        latestTurnVersion.current = response.turnVersion;
+        setGame(response);
+      }
       setError("");
+      setSocketNotice("");
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.status === 401) {
         onAuthenticationError();
+        return;
+      }
+
+      if (requestError instanceof ApiError && requestError.status === 404) {
+        setError(
+          "Esta sala fue eliminada por su creador. Volviendo a tus partidas…",
+        );
+        window.setTimeout(onBack, 1200);
+        return;
+      }
+
+      if (!navigator.onLine) {
+        setSocketNotice(
+          "Sin conexión. Conservamos el estado actual y lo actualizaremos al reconectar.",
+        );
         return;
       }
 
@@ -45,10 +70,35 @@ export function GameRoom({
           : "No se pudo cargar la partida.",
       );
     }
-  }, [gameId, onAuthenticationError, token]);
+  }, [gameId, onAuthenticationError, onBack, token]);
+  /* Recupera el snapshop persistido del backend tras un error
+  LoadGame y atrata 401, 404, conexión y mensajes de API */
+
+  async function handleRefreshGame() {
+    setIsRefreshingGame(true);
+
+    try {
+      await loadGame();
+    } finally {
+      setIsRefreshingGame(false);
+    }
+  }
 
   useEffect(() => {
     void Promise.resolve().then(loadGame);
+  }, [loadGame]);
+
+  useEffect(() => {
+    function handleOnline() {
+      setSocketNotice("Conexión recuperada. Actualizando la partida…");
+      void loadGame();
+    }
+
+    window.addEventListener("online", handleOnline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+    };
   }, [loadGame]);
 
   useEffect(() => {
@@ -56,22 +106,79 @@ export function GameRoom({
       auth: { token },
     });
 
+    function isAuthenticationSocketError(socketError: {
+      message?: string;
+      data?: unknown;
+    }) {
+      const data =
+        typeof socketError.data === "object" && socketError.data !== null
+          ? socketError.data
+          : {};
+
+      const status =
+        "status" in data && typeof data.status === "number"
+          ? data.status
+          : undefined;
+
+      const code =
+        "code" in data && typeof data.code === "string" ? data.code : undefined;
+
+      const message = socketError.message?.toLowerCase() ?? "";
+
+      return (
+        status === 401 ||
+        code === "UNAUTHORIZED" ||
+        code === "INVALID_TOKEN" ||
+        code === "TOKEN_EXPIRED" ||
+        message.includes("unauthorized") ||
+        message.includes("jwt") ||
+        message.includes("token")
+      );
+    }
+
     socket.on("connect", () => {
+      setSocketNotice("Conexión recuperada. Actualizando la partida…");
       socket.emit("join:game", gameId);
     });
+
+    socket.on("connect_error", (socketError) => {
+      if (isAuthenticationSocketError(socketError)) {
+        onAuthenticationError();
+        return;
+      }
+
+      setSocketNotice("Se ha perdido la conexión. Reintentando conectar…");
+    });
+
+    socket.on("disconnect", (reason) => {
+      if (reason !== "io client disconnect") {
+        setSocketNotice("Se ha perdido la conexión. Reintentando conectar…");
+      }
+    });
+
     socket.on("joined:game", () => {
       setSelectedChoiceId(null);
       void loadGame();
     });
-    socket.on("game:updated", () => {
-      setSelectedChoiceId(null);
-      void loadGame();
+
+    socket.on("game:updated", (event: { turnVersion: number }) => {
+      // Una unión puede conservar turnVersion. Recuperamos el snapshot
+      // persistido también en ese caso; loadGame evita retroceder.
+      if (event.turnVersion >= latestTurnVersion.current) {
+        setSelectedChoiceId(null);
+        void loadGame();
+      }
+    });
+
+    socket.on("error:game", ({ message }: { message: string }) => {
+      setError(message);
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [gameId, loadGame, token]);
+  }, [gameId, loadGame, onAuthenticationError, token]);
+
   /* Añadimos la acción de iniciar la sala, el bcak decide si el usuario puede hacerlo
 si o es creador o falta un jugador, muestra error*/
 
@@ -100,9 +207,24 @@ si o es creador o falta un jugador, muestra error*/
   const currentQuestion = game?.questions.find(
     (question) => question.id === game.currentTurn?.gameQuestionId,
   );
+  const totalQuestions = game?.questions.length ?? 0;
+  const currentQuestionNumber = currentQuestion
+    ? currentQuestion.position + 1
+    : totalQuestions;
+
   const isYourTurn = game?.currentTurn?.userId === userId;
-  const currentPlayer = game?.players.find((player) => player.userId === userId);
+  const currentPlayer = game?.players.find(
+    (player) => player.userId === userId,
+  );
   const opponent = game?.players.find((player) => player.userId !== userId);
+  const you = currentPlayer;
+  const opponentName = opponent?.displayName ?? "tu rival";
+
+  const finalMessage = game?.isDraw
+    ? "Empate"
+    : game?.winnerUserId === userId
+      ? "Ganaste"
+      : "Perdiste";
 
   async function handleAnswer(choiceId: number) {
     if (!currentQuestion || isAnswerSending) return;
@@ -148,11 +270,29 @@ si o es creador o falta un jugador, muestra error*/
       </div>
 
       {error && (
-        <p
+        <div
           className="mt-5 rounded-lg bg-red-950/60 p-3 text-sm text-red-200"
           role="alert"
         >
-          {error}
+          <p>{error}</p>
+
+          {/* Recupera el estado antes de que el usuario vuelva a intentar una acción. */}
+          <button
+            type="button"
+            onClick={() => void handleRefreshGame()}
+            disabled={isRefreshingGame || isStarting || isAnswerSending}
+            className="mt-3 rounded border border-red-200/60 px-3 py-1.5 text-xs font-semibold text-red-100 hover:bg-red-900/50 disabled:cursor-wait disabled:opacity-60"
+          >
+            {isRefreshingGame ? "Actualizando…" : "Actualizar estado"}
+          </button>
+        </div>
+      )}
+      {socketNotice && (
+        <p
+          className="mt-5 rounded-lg border border-amber-400/40 bg-amber-950/30 p-3 text-sm text-amber-100"
+          role="status"
+        >
+          {socketNotice}
         </p>
       )}
 
@@ -160,37 +300,62 @@ si o es creador o falta un jugador, muestra error*/
 
       {game?.status === "WAITING" && (
         <div className="mt-6 space-y-4">
-          {game.players.length < 2 ? (
-            <p className="text-sm text-[#A3A3A3]" role="status">
-              Esperando a que se una el segundo jugador.
+          <div className="rounded-xl border border-[#2B2B2B] bg-[#0D0D0D] p-4 text-sm">
+            <p>
+              Tú ({you?.displayName ?? "Cargando…"}):{" "}
+              {you?.isReady ? "Preparado" : "Sin confirmar"}
             </p>
-          ) : currentPlayer?.isReady ? (
+            <p className="mt-1 text-[#A3A3A3]">
+              {opponent
+                ? `${opponent.displayName}: ${opponent.isReady ? "Preparado" : "Sin confirmar"}`
+                : "Falta que entre tu rival."}
+            </p>
+          </div>
+          {currentPlayer?.isReady ? (
             <p className="text-sm text-[#A3A3A3]" role="status">
-              Has aceptado iniciar la partida. Esperando a que el otro jugador
-              confirme.
+              Esperando a tu rival.
             </p>
           ) : (
             <>
-              <p className="text-sm text-[#A3A3A3]" role="status">
-                {opponent?.isReady
-                  ? "El otro jugador ya está listo. Acepta para comenzar la partida."
-                  : "Acepta para indicar que estás listo. Las preguntas solo aparecerán cuando ambos aceptéis."}
-              </p>
               <button
                 type="button"
                 onClick={handleStart}
                 disabled={isStarting}
                 className="rounded-lg bg-[#A3E635] px-4 py-2 text-sm font-bold text-[#090909] transition hover:bg-[#BEF264] disabled:cursor-wait disabled:opacity-60"
               >
-                {isStarting ? "Confirmando..." : "Aceptar e iniciar partida"}
+                {isStarting ? "Confirmando..." : "Prepararme"}
               </button>
             </>
           )}
         </div>
       )}
+
+      {game?.status === "ACTIVE" && (
+        <section className="mt-6 rounded-xl border border-[#2B2B2B] bg-[#0D0D0D] p-4">
+          <p className="text-xs font-bold tracking-wide text-[#A3A3A3]">
+            MARCADOR
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <p className="rounded-lg border border-[#A3E635]/40 bg-[#A3E635]/10 px-3 py-2 text-sm">
+              Tú ({you?.displayName ?? "Cargando…"}):{" "}
+              <strong>{you?.score ?? 0} puntos</strong>
+            </p>
+            <p className="rounded-lg border border-[#3D3D3D] px-3 py-2 text-sm text-[#D4D4D4]">
+              {opponentName}: <strong>{opponent?.score ?? 0} puntos</strong>
+            </p>
+          </div>
+          <p className="mt-3 text-xs text-[#A3A3A3]">
+            Solo se muestran los puntos de rondas ya cerradas por ambos jugadores.
+          </p>
+        </section>
+      )}
+
       {game?.status === "ACTIVE" && currentQuestion && isYourTurn && (
         <article className="ambient-card mx-auto mt-6 max-w-xl rounded-2xl border border-[#2B2B2B] bg-[#0D0D0D] p-4 sm:p-6">
           <h3 className="text-lg font-bold text-[#A3E635]">Tu pregunta</h3>
+          <p className="mt-1 text-sm text-[#A3A3A3]">
+            Pregunta {currentQuestionNumber} de {totalQuestions} · Tu turno
+          </p>
           <p className="mt-3 text-base text-[#F8FAFC] sm:text-lg">
             {currentQuestion.statement}
           </p>
@@ -223,14 +388,30 @@ si o es creador o falta un jugador, muestra error*/
 
       {game?.status === "ACTIVE" && !isYourTurn && (
         <p className="mt-6 text-center text-sm font-semibold text-[#A3A3A3]">
-          Esperando a que el otro jugador responda...
+          Turno de {opponentName}. Esperando su respuesta…
         </p>
       )}
 
       {game?.status === "FINISHED" && (
-        <p className="mt-6 rounded-xl border border-[#A3E635]/40 bg-[#A3E635]/10 p-4 text-sm font-semibold text-[#F8FAFC]" role="status">
-          Partida finalizada. El resultado está disponible en el historial.
-        </p>
+        <section
+          className="mt-6 rounded-xl border border-[#A3E635]/40 bg-[#A3E635]/10 p-5"
+          role="status"
+        >
+          <h3 className="text-xl font-black text-[#A3E635]">{finalMessage}</h3>
+          <p className="mt-3">
+            Tú ({you?.displayName}): <strong>{you?.score ?? 0} puntos</strong>
+          </p>
+          <p className="mt-1">
+            {opponentName}: <strong>{opponent?.score ?? 0} puntos</strong>
+          </p>
+          <button
+            type="button"
+            onClick={onBack}
+            className="mt-5 rounded-lg border border-[#A3E635] px-4 py-2 text-sm font-semibold text-[#A3E635]"
+          >
+            Volver a mis partidas
+          </button>
+        </section>
       )}
     </section>
   );
