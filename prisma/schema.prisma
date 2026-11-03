@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+//Tabla de categorías,
+model Category {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  questions Question[]
+}
+
+// Tabla de preguntas.
+model Question {
+  id            Int            @id @default(autoincrement())
+  statement     String
+  categoryId    Int
+  category      Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  choices       Option[]
+  gameQuestions GameQuestion[]
+}
+
+// Tabla para opciones
+model Option {
+  id         Int      @id @default(autoincrement())
+  text       String
+  position   Int
+  isCorrect  Boolean
+  questionId Int
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, position])
+  @@unique([questionId, text])
+}
+
+// Roles disponibles para los usuarios.
+enum Role {
+  USER
+  ADMIN
+}
+
+// Modelo de tabla para usuario.
+model user {
+  id           Int          @id @default(autoincrement())
+  email        String       @unique
+  // Nombre público; no es credencial y puede repetirse entre usuarios.
+  displayName  String
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  role         Role         @default(USER)
+  games        GamePlayer[]
+  answers      Answer[]
+}
+
+enum GameMode {
+  INDIVIDUAL
+  MULTIPLAYER
+}
+
+// Ciclo de vida de una partida: la sala multijugador espera al segundo
+// jugador (WAITING), después se juega (ACTIVE) y finalmente se cierra.
+enum GameStatus {
+  WAITING
+  ACTIVE
+  FINISHED
+}
+
+// Una partida de trivia.
+model Game {
+  id         Int            @id @default(autoincrement())
+  mode       GameMode       @default(INDIVIDUAL)
+  code       String?        @unique
+  status     GameStatus     @default(ACTIVE)
+  createdAt  DateTime       @default(now())
+  finishedAt DateTime?
+  // Estado del turno. Se actualiza en la MISMA transacción que la respuesta.
+  currentPosition  Int @default(0) // pregunta en juego (0..5; 5 = terminada)
+  currentTurnOrder Int @default(1) // jugador al que le toca (1 o 2)
+  // Control de versión optimista: cada respuesta lo incrementa. Dos
+  // peticiones que leyeron la misma versión no pueden guardar las dos.
+  turnVersion Int @default(0)
+  // Ganador calculado al cerrar; null en empate o mientras está activa.
+  winnerUserId Int?
+  players    GamePlayer[]
+  questions  GameQuestion[]
+}
+
+// Participantes de una partida, tanto individual como multijugador.
+// isCreator identifica al usuario que puede iniciar una sala WAITING.
+model GamePlayer {
+  id     Int  @id @default(autoincrement())
+  game   Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  gameId Int
+  user   user @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId Int
+  isCreator Boolean @default(false)
+  isReady   Boolean @default(false)
+  // Orden de turno dentro de la partida: 1 responde antes que 2.
+  turnOrder Int
+  // Puntuación persistida; se incrementa en la transacción de la respuesta.
+  score Int @default(0)
+
+  // Un usuario no puede estar dos veces en la misma partida.
+  @@unique([gameId, userId])
+  // No puede haber dos jugadores con el mismo turno en una partida.
+  @@unique([gameId, turnOrder])
+}
+
+// Pregunta congelada dentro de una partida: copia del enunciado,
+// las opciones y la solución del catálogo en el momento de crearla.
+model GameQuestion {
+  id         Int          @id @default(autoincrement())
+  game       Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  gameId     Int
+  position   Int // Orden en la partida (0..4)
+  statement  String // Copia del enunciado
+  solution   Int // Copia de la respuesta correcta (0..3)
+  question   Question?    @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  questionId Int? // Origen en el catálogo (por trazabilidad; si se borra, no rompe)
+  choices    GameChoice[]
+  answers    Answer[]
+
+  // La misma pregunta no se repite dentro de una partida.
+  @@unique([gameId, position])
+}
+
+// Copia de una opción dentro de una pregunta de partida.
+model GameChoice {
+  id             Int          @id @default(autoincrement())
+  gameQuestion   GameQuestion @relation(fields: [gameQuestionId], references: [id], onDelete: Cascade)
+  gameQuestionId Int
+  text           String
+  position       Int // 0..3
+  answers        Answer[]
+
+  @@unique([gameQuestionId, position])
+}
+
+// Una respuesta por JUGADOR y pregunta de partida. En modo individual el
+// único participante responde una vez; en multijugador responden los dos,
+// primero el turnOrder 1 y después el 2.
+model Answer {
+  id             Int          @id @default(autoincrement())
+  gameQuestion   GameQuestion @relation(fields: [gameQuestionId], references: [id], onDelete: Cascade)
+  gameQuestionId Int
+  choice         GameChoice   @relation(fields: [choiceId], references: [id], onDelete: Cascade)
+  choiceId       Int
+  user           user         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         Int
+  isCorrect      Boolean
+  createdAt      DateTime     @default(now())
+
+  // Responder dos veces la misma pregunta con el mismo usuario: imposible.
+  // Es la última defensa frente a dos peticiones simultáneas.
+  @@unique([gameQuestionId, userId])
+}

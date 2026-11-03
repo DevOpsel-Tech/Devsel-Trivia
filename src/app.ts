@@ -1,25 +1,22 @@
-// Este archivo contiene la configuración principal de la aplicación Express,
-// incluyendo las rutas y middlewares necesarios para manejar las peticiones HTTP.
-
+// Configuración principal de la aplicación TriviaApp.
+// Recibe peticiones HTTP, gestiona rutas y middlewares, y sirve la documentación OpenAPI en /docs.
+// Datos: Entran por HTTP (JSON, headers), se procesan por controladores y servicios, y salen como respuestas JSON al frontend.
+// Dependencias: express, swagger-ui-express, middlewares de autenticación y manejo de errores, sockets en server.ts.
 import express from "express";
-
 // Importa Swagger UI para mostrar la documentación de la API en /docs.
 import swaggerUi from "swagger-ui-express";
-
 // Importa la especificación OpenAPI generada desde swagger.ts.
 import { swaggerSpec } from "./docs/swagger.js";
-
-// Importa las preguntas desde el archivo de datos.
-import { preguntas } from "./data/questions.js";
-
-// Importa el tipo Pregunta desde el archivo de tipos.
-import type { Pregunta } from "./types/question.js";
-
-// Importa el esquema de validación de preguntas.
-import { questionSchema } from "./schemas/question.schema.js";
-
-// Importa el esquema de validación del ID de pregunta.
-import { questionIdSchema } from "./schemas/question-id.schema.js";
+import { questionRouter } from "./routes/questions.routes.js";
+import { categoryRouter } from "./routes/categories.routes.js";
+import { authRouter } from "./routes/auth.routes.js";
+import { authMiddleware } from "./middlewares/auth.middleware.js";
+import { meController } from "./controllers/auth.controller.js";
+// Router de partidas (reto 13).
+import { gameRouter } from "./routes/games.routes.js";
+import { meRouter } from "./routes/me.routes.js";
+import cors from "cors";
+import { isAllowedFrontendOrigin } from "./config/cors.js";
 
 // Importa los middlewares de manejo de errores.
 import {
@@ -32,7 +29,17 @@ import {
 // Abrir el puerto es responsabilidad de server.ts.
 export const app = express();
 
+app.use(
+  cors({
+    origin(origin, callback) {
+      callback(null, isAllowedFrontendOrigin(origin) ? origin : false);
+    },
+    credentials: true,
+  }),
+);
+
 // Muestra la documentación de la API en /docs usando Swagger UI.
+// Agrupa todas las rutas definidas en los archivos routes/ y las muestra en esta ruta.
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 /**
@@ -71,6 +78,7 @@ app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
  *                 code: INTERNAL_SERVER_ERROR
  *                 message: Ha ocurrido un error interno en el servidor
  */
+// Endpoint para obtener la especificación OpenAPI en formato JSON.
 app.get("/api/openapi.json", (_req, res) => {
   res.json(swaggerSpec);
 });
@@ -80,14 +88,8 @@ app.get("/api/openapi.json", (_req, res) => {
 app.use(express.json());
 
 // Captura los errores producidos por un JSON mal formado.
+// Maneja errores de sintaxis JSON y cuerpos demasiado grandes.
 app.use(jsonErrorMiddleware);
-
-// Guarda el siguiente ID disponible para una nueva pregunta.
-// Si no hay preguntas, el ID inicial será 1.
-let siguienteId =
-  preguntas.length > 0
-    ? Math.max(...preguntas.map((pregunta) => pregunta.id)) + 1
-    : 1;
 
 /**
  * @openapi
@@ -117,10 +119,12 @@ let siguienteId =
  *                 code: INTERNAL_SERVER_ERROR
  *                 message: Ha ocurrido un error interno en el servidor
  */
+// Ruta de bienvenida para verificar que la API está activa y respondiendo.
 app.get("/", (_req, res) => {
   res.json({ message: "Bienvenido a TriviaApp Backend" });
 });
 
+// GET: consulta y muestra todas las preguntas.
 /**
  * @openapi
  * /health:
@@ -152,22 +156,42 @@ app.get("/", (_req, res) => {
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
-
 /**
  * @openapi
  * /api/questions:
  *   get:
- *     summary: Obtener todas las preguntas
- *     description: Devuelve todas las preguntas sin mostrar la respuesta correcta.
+ *     summary: Obtener preguntas (paginadas)
+ *     description: Devuelve preguntas paginadas, con búsqueda y filtro por categoría.
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, minimum: 1, maximum: 1000, default: 1 }
+ *       - in: query
+ *         name: pageSize
+ *         schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+ *       - in: query
+ *         name: search
+ *         schema: { type: string, maxLength: 100 }
+ *       - in: query
+ *         name: categoryId
+ *         schema: { type: integer, minimum: 1, maximum: 2147483647 }
  *     responses:
  *       200:
- *         description: Lista de preguntas
+ *         description: Lista paginada de preguntas
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 $ref: "#/components/schemas/PreguntaPublica"
+ *               $ref: "#/components/schemas/PreguntasPaginadas"
+ *       400:
+ *         description: Parámetros inválidos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *             example:
+ *               error:
+ *                 code: VALIDATION_ERROR
+ *                 message: Los datos enviados no son válidos
  *       500:
  *         description: Error interno del servidor
  *         content:
@@ -179,20 +203,9 @@ app.get("/health", (_req, res) => {
  *                 code: INTERNAL_SERVER_ERROR
  *                 message: Ha ocurrido un error interno en el servidor
  */
-app.get("/api/questions", (_req, res) => {
-  const preguntasPublicas = preguntas.map((pregunta) => {
-    // Creamos un objeto público sin incluir respuestaCorrecta.
-    return {
-      id: pregunta.id,
-      enunciado: pregunta.enunciado,
-      opciones: pregunta.opciones,
-    };
-  });
+app.use("/api/questions", questionRouter);
 
-  // Devolvemos las preguntas públicas como respuesta JSON.
-  res.json(preguntasPublicas);
-});
-
+// GET: consulta una pregunta concreta usando su ID.
 /**
  * @openapi
  * /api/questions/{id}:
@@ -205,8 +218,10 @@ app.get("/api/questions", (_req, res) => {
  *         required: true
  *         description: ID de la pregunta.
  *         schema:
- *           type: string
- *         example: "1"
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 2147483647
+ *         example: 1
  *     responses:
  *       200:
  *         description: Pregunta encontrada
@@ -223,7 +238,7 @@ app.get("/api/questions", (_req, res) => {
  *             example:
  *               error:
  *                 code: VALIDATION_ERROR
- *                 message: Los datos enviados no son válidos
+ *                 message: El id de la pregunta no es válido
  *       404:
  *         description: La pregunta no existe
  *         content:
@@ -233,7 +248,7 @@ app.get("/api/questions", (_req, res) => {
  *             example:
  *               error:
  *                 code: QUESTION_NOT_FOUND
- *                 message: Pregunta no encontrada
+ *                 message: La pregunta no existe
  *       500:
  *         description: Error interno del servidor
  *         content:
@@ -245,50 +260,16 @@ app.get("/api/questions", (_req, res) => {
  *                 code: INTERNAL_SERVER_ERROR
  *                 message: Ha ocurrido un error interno en el servidor
  */
-app.get("/api/questions/:id", (req, res) => {
-  // Validamos los parámetros de la URL usando Zod.
-  const resultadoValidacion = questionIdSchema.safeParse(req.params);
 
-  // Si el ID no cumple el esquema, devolvemos un error 400.
-  if (!resultadoValidacion.success) {
-    return res.status(400).json({
-      error: {
-        code: "VALIDATION_ERROR",
-        message: "Los datos enviados no son válidos",
-      },
-    });
-  }
-
-  // Usamos el ID que Zod ha validado.
-  const id = Number(resultadoValidacion.data.id);
-
-  // Buscamos la pregunta con ese ID.
-  const pregunta = preguntas.find((pregunta) => pregunta.id === id);
-
-  // Si no existe, devolvemos un error 404.
-  if (!pregunta) {
-    return res.status(404).json({
-      error: {
-        code: "QUESTION_NOT_FOUND",
-        message: "Pregunta no encontrada",
-      },
-    });
-  }
-
-  // Devolvemos la pregunta sin mostrar respuestaCorrecta.
-  return res.json({
-    id: pregunta.id,
-    enunciado: pregunta.enunciado,
-    opciones: pregunta.opciones,
-  });
-});
-
+// POST: crea y guarda una pregunta nueva.
 /**
  * @openapi
  * /api/questions:
  *   post:
  *     summary: Crear una pregunta
  *     description: Crea una nueva pregunta de trivia.
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -296,6 +277,7 @@ app.get("/api/questions/:id", (req, res) => {
  *           schema:
  *             $ref: "#/components/schemas/PreguntaInput"
  *           example:
+ *             categoryId: 1
  *             enunciado: ¿Cuál es la capital de España?
  *             opciones:
  *               - Madrid
@@ -329,6 +311,18 @@ app.get("/api/questions/:id", (req, res) => {
  *                   error:
  *                     code: VALIDATION_ERROR
  *                     message: Los datos enviados no son válidos
+ *       401:
+ *         description: Falta el token o el token no es válido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       403:
+ *         description: El usuario autenticado no tiene rol ADMIN.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
  *       500:
  *         description: Error interno del servidor
  *         content:
@@ -340,56 +334,26 @@ app.get("/api/questions/:id", (req, res) => {
  *                 code: INTERNAL_SERVER_ERROR
  *                 message: Ha ocurrido un error interno en el servidor
  */
-app.post("/api/questions", (req, res) => {
-  // Validamos el body usando el esquema de Zod.
-  const resultadoValidacion = questionSchema.safeParse(req.body);
 
-  // Si la validación falla, devolvemos un error 400.
-  if (!resultadoValidacion.success) {
-    return res.status(400).json({
-      error: {
-        code: "VALIDATION_ERROR",
-        message: "Los datos enviados no son válidos",
-      },
-    });
-  }
-
-  // Usamos los datos que Zod ha validado.
-  const { enunciado, opciones, respuestaCorrecta } = resultadoValidacion.data;
-
-  // Creamos la nueva pregunta.
-  const nuevaPregunta: Pregunta = {
-    id: siguienteId++,
-    enunciado,
-    opciones,
-    respuestaCorrecta,
-  };
-
-  // Añadimos la pregunta al array.
-  preguntas.push(nuevaPregunta);
-
-  // Devolvemos la pregunta sin revelar respuestaCorrecta.
-  return res.status(201).json({
-    id: nuevaPregunta.id,
-    enunciado: nuevaPregunta.enunciado,
-    opciones: nuevaPregunta.opciones,
-  });
-});
-
+// PUT: actualiza una pregunta existente usando su ID.
 /**
  * @openapi
  * /api/questions/{id}:
  *   put:
  *     summary: Actualizar una pregunta
  *     description: Sustituye los datos de una pregunta existente.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         description: ID de la pregunta.
  *         schema:
- *           type: string
- *         example: "1"
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 2147483647
+ *         example: 1
  *     requestBody:
  *       required: true
  *       content:
@@ -397,6 +361,7 @@ app.post("/api/questions", (req, res) => {
  *           schema:
  *             $ref: "#/components/schemas/PreguntaInput"
  *           example:
+ *             categoryId: 1
  *             enunciado: ¿Cuál es la capital de Francia?
  *             opciones:
  *               - París
@@ -424,12 +389,30 @@ app.post("/api/questions", (req, res) => {
  *                   error:
  *                     code: INVALID_JSON
  *                     message: El JSON enviado no es válido
+ *               invalidId:
+ *                 summary: ID no válido
+ *                 value:
+ *                   error:
+ *                     code: VALIDATION_ERROR
+ *                     message: El id de la pregunta no es válido
  *               validationError:
- *                 summary: Datos o ID no válidos
+ *                 summary: Datos no válidos
  *                 value:
  *                   error:
  *                     code: VALIDATION_ERROR
  *                     message: Los datos enviados no son válidos
+ *       401:
+ *         description: Falta el token o el token no es válido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       403:
+ *         description: El usuario autenticado no tiene rol ADMIN.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
  *       404:
  *         description: La pregunta no existe
  *         content:
@@ -439,7 +422,7 @@ app.post("/api/questions", (req, res) => {
  *             example:
  *               error:
  *                 code: QUESTION_NOT_FOUND
- *                 message: Pregunta no encontrada
+ *                 message: La pregunta no existe
  *       500:
  *         description: Error interno del servidor
  *         content:
@@ -451,79 +434,26 @@ app.post("/api/questions", (req, res) => {
  *                 code: INTERNAL_SERVER_ERROR
  *                 message: Ha ocurrido un error interno en el servidor
  */
-app.put("/api/questions/:id", (req, res) => {
-  // Validamos el ID de la URL.
-  const resultadoValidacionId = questionIdSchema.safeParse(req.params);
 
-  // Si el ID no es válido, devolvemos un error 400.
-  if (!resultadoValidacionId.success) {
-    return res.status(400).json({
-      error: {
-        code: "VALIDATION_ERROR",
-        message: "Los datos enviados no son válidos",
-      },
-    });
-  }
-
-  // Convertimos el ID validado a número.
-  const id = Number(resultadoValidacionId.data.id);
-
-  // Buscamos la pregunta.
-  const pregunta = preguntas.find((pregunta) => pregunta.id === id);
-
-  // Si no existe, devolvemos un error 404.
-  if (!pregunta) {
-    return res.status(404).json({
-      error: {
-        code: "QUESTION_NOT_FOUND",
-        message: "Pregunta no encontrada",
-      },
-    });
-  }
-
-  // Validamos el body de la petición.
-  const resultadoValidacion = questionSchema.safeParse(req.body);
-
-  // Si el body no es válido, devolvemos un error 400.
-  if (!resultadoValidacion.success) {
-    return res.status(400).json({
-      error: {
-        code: "VALIDATION_ERROR",
-        message: "Los datos enviados no son válidos",
-      },
-    });
-  }
-
-  // Usamos únicamente los datos validados por Zod.
-  const { enunciado, opciones, respuestaCorrecta } = resultadoValidacion.data;
-
-  // Sustituimos los datos de la pregunta.
-  pregunta.enunciado = enunciado;
-  pregunta.opciones = opciones;
-  pregunta.respuestaCorrecta = respuestaCorrecta;
-
-  // Devolvemos la pregunta actualizada sin respuestaCorrecta.
-  return res.status(200).json({
-    id: pregunta.id,
-    enunciado: pregunta.enunciado,
-    opciones: pregunta.opciones,
-  });
-});
-
+// DELETE: elimina una pregunta usando su ID.
 /**
  * @openapi
  * /api/questions/{id}:
  *   delete:
  *     summary: Eliminar una pregunta
  *     description: Elimina una pregunta existente por su ID.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         description: ID de la pregunta.
  *         schema:
- *           type: string
- *         example: "1"
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 2147483647
+ *         example: 1
  *     responses:
  *       204:
  *         description: Pregunta eliminada correctamente
@@ -536,7 +466,7 @@ app.put("/api/questions/:id", (req, res) => {
  *             example:
  *               error:
  *                 code: VALIDATION_ERROR
- *                 message: Los datos enviados no son válidos
+ *                 message: El id de la pregunta no es válido
  *       404:
  *         description: La pregunta no existe
  *         content:
@@ -546,7 +476,19 @@ app.put("/api/questions/:id", (req, res) => {
  *             example:
  *               error:
  *                 code: QUESTION_NOT_FOUND
- *                 message: Pregunta no encontrada
+ *                 message: La pregunta no existe
+ *       401:
+ *         description: Falta el token o el token no es válido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       403:
+ *         description: El usuario autenticado no tiene rol ADMIN.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
  *       500:
  *         description: Error interno del servidor
  *         content:
@@ -558,45 +500,568 @@ app.put("/api/questions/:id", (req, res) => {
  *                 code: INTERNAL_SERVER_ERROR
  *                 message: Ha ocurrido un error interno en el servidor
  */
-app.delete("/api/questions/:id", (req, res) => {
-  // Validamos el ID de la URL.
-  const resultadoValidacionId = questionIdSchema.safeParse(req.params);
+// Ruta pública que lista las categorías
+/**
+ * @openapi
+ * /api/categories:
+ *   get:
+ *     summary: Obtener todas las categorías
+ *     description: Devuelve las categorías disponibles para asignar a una pregunta.
+ *     responses:
+ *       200:
+ *         description: Lista de categorías
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: "#/components/schemas/Categoria"
+ *       500:
+ *         description: Error interno del servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ */
+app.use("/api/categories", categoryRouter);
 
-  // Si el ID no es válido, devolvemos un error 400.
-  if (!resultadoValidacionId.success) {
-    return res.status(400).json({
-      error: {
-        code: "VALIDATION_ERROR",
-        message: "Los datos enviados no son válidos",
-      },
-    });
-  }
+/**
+ * @openapi
+ * /api/auth/login:
+ *   post:
+ *     summary: Iniciar sesión
+ *     description: Comprueba el email y la contraseña y devuelve un token JWT.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: "#/components/schemas/RegistroEntrada"
+ *     responses:
+ *       200:
+ *         description: Inicio de sesión correcto
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                 expiresIn:
+ *                   type: integer
+ *                   example: 3600
+ *                 user:
+ *                   $ref: "#/components/schemas/UsuarioPublico"
+ *       400:
+ *         description: Datos no válidos
+ *       401:
+ *         description: Email o contraseña incorrectos
+ */
 
-  // Convertimos el ID validado a número.
-  const id = Number(resultadoValidacionId.data.id);
+// Ruta de registro de usuarios.
+/**
+ * @openapi
+ * /api/auth/register:
+ *   post:
+ *     summary: Registrar un usuario nuevo
+ *     description: Crea una cuenta con email y contraseña. La contraseña se guarda como hash y nunca se devuelve.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: "#/components/schemas/RegistroEntrada"
+ *     responses:
+ *       201:
+ *         description: Usuario creado correctamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/UsuarioPublico"
+ *       400:
+ *         description: Email inválido, contraseña corta o campos inesperados
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *             example:
+ *               error:
+ *                 code: VALIDATION_ERROR
+ *                 message: Los datos enviados no son válidos
+ *       409:
+ *         description: El email ya está registrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *             example:
+ *               error:
+ *                 code: EMAIL_ALREADY_EXISTS
+ *                 message: El email ya está registrado
+ *       500:
+ *         description: Error interno del servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ */
+app.use("/api/auth", authRouter);
 
-  // Buscamos la posición de la pregunta.
-  const index = preguntas.findIndex((pregunta) => pregunta.id === id);
+// Montamos el router bajo /api/games.
+/**
+ * @openapi
+ * /api/games:
+ *   post:
+ *     summary: Crea una partida (individual o multijugador)
+ *     description: Crea una partida. Si se envía mode "MULTIPLAYER", crea una sala en estado WAITING con un código de invitación; si no, crea una partida individual ACTIVE.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               mode:
+ *                 type: string
+ *                 enum: [INDIVIDUAL, MULTIPLAYER]
+ *                 default: INDIVIDUAL
+ *     responses:
+ *       201:
+ *         description: Partida creada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: integer
+ *                   example: 1
+ *                 status:
+ *                   type: string
+ *                   enum: [WAITING, ACTIVE, FINISHED]
+ *                   example: ACTIVE
+ *                 code:
+ *                   type: string
+ *                   description: Código de invitación (solo en modo MULTIPLAYER).
+ *                   example: "ABC123"
+ *       401:
+ *         description: Token ausente, inválido o caducado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       409:
+ *         description: No hay cinco preguntas disponibles
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ */
+/**
+ * @openapi
+ * /api/games/join:
+ *   post:
+ *     summary: Unirse a una sala multijugador
+ *     description: Entra en una partida WAITING usando un codigo de invitacion.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               code:
+ *                 type: string
+ *                 example: "ABC123"
+ *             required: ["code"]
+ *     responses:
+ *       200:
+ *         description: Unido a la sala
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id: { type: integer, example: 1 }
+ *                 status: { type: string, enum: [WAITING, ACTIVE, FINISHED], example: WAITING }
+ *       400:
+ *         description: Codigo invalido o sala llena
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       401:
+ *         description: Token ausente, invalido o caducado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       404:
+ *         description: Codigo desconocido
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       409:
+ *         description: Sala llena o ya iniciada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ * /api/games/{id}/start:
+ *   post:
+ *     summary: Confirmar que un jugador está preparado para iniciar
+ *     description: >
+ *       Cualquier participante de una sala multijugador puede confirmar que
+ *       está preparado. La primera confirmación mantiene la sala en WAITING
+ *       con started: false. Cuando los dos participantes han confirmado, el
+ *       servidor crea las cinco preguntas compartidas y la partida pasa a
+ *       ACTIVE con started: true.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: Identificador de la sala multijugador.
+ *     responses:
+ *       200:
+ *         description: Confirmación registrada o partida iniciada tras la segunda confirmación.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [id, status, started]
+ *               properties:
+ *                 id:
+ *                   type: integer
+ *                   example: 1
+ *                 status:
+ *                   type: string
+ *                   enum: [WAITING, ACTIVE]
+ *                   example: WAITING
+ *                 started:
+ *                   type: boolean
+ *                   description: false si falta confirmar el otro jugador; true si ambos ya confirmaron.
+ *                   example: false
+ *       400:
+ *         description: El id no es válido o la partida no es multijugador.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       401:
+ *         description: Token ausente, inválido o caducado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       403:
+ *         description: El usuario no participa en esta sala.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       404:
+ *         description: La partida no existe.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       409:
+ *         description: La partida ya no admite confirmaciones, faltan preguntas o hubo un conflicto de concurrencia.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ * /api/games/{id}:
+ *   delete:
+ *     summary: Eliminar una sala multijugador en espera
+ *     description: >
+ *       Elimina una sala creada por error únicamente si sigue en estado WAITING.
+ *       Solo puede hacerlo el creador de la sala. No permite eliminar partidas
+ *       individuales, activas ni finalizadas.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: Identificador de la sala.
+ *     responses:
+ *       204:
+ *         description: Sala eliminada correctamente. No devuelve cuerpo.
+ *       400:
+ *         description: El id no es válido.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       401:
+ *         description: Token ausente, inválido o caducado.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       403:
+ *         description: El usuario no es el creador de la sala.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       404:
+ *         description: La partida no existe.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       409:
+ *         description: La sala ya no está en espera o hubo un conflicto de concurrencia.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ */
+app.use("/api/games", gameRouter);
+app.use("/api/me", meRouter);
 
-  // Si no existe, devolvemos un error 404.
-  if (index === -1) {
-    return res.status(404).json({
-      error: {
-        code: "QUESTION_NOT_FOUND",
-        message: "Pregunta no encontrada",
-      },
-    });
-  }
+// Documentación Swagger del estado de la partida.
+/**
+ * @openapi
+ * /api/games/{id}:
+ *   get:
+ *     summary: Obtiene el estado de una partida
+ *     description: Devuelve las preguntas y opciones, la puntuación acumulada (score) y la siguiente pregunta pendiente (nextQuestionId) si el usuario autenticado participa en la partida. Nunca incluye las soluciones.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Id de la partida.
+ *     responses:
+ *       200:
+ *         description: Estado de la partida
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/PartidaEstado"
+ *       400:
+ *         description: El id no es un entero entre 1 y 2147483647 (se rechazan decimales y notación exponencial)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       401:
+ *         description: Token ausente, inválido o caducado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       403:
+ *         description: El usuario no participa en la partida
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       404:
+ *         description: La partida no existe
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ */
 
-  // Eliminamos la pregunta del array.
-  preguntas.splice(index, 1);
+// Documentación Swagger de responder una pregunta de la partida.
+/**
+ * @openapi
+ * /api/games/{id}/answers:
+ *   post:
+ *     summary: Responde la pregunta en turno de la partida
+ *     description: Registra la respuesta del usuario autenticado. El backend comprueba el turno, que la opción pertenece a la pregunta y calcula la puntuación; nunca acepta puntuación enviada por el cliente.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Id de la partida.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: "#/components/schemas/RespuestaInput"
+ *           example:
+ *             gameQuestionId: 1
+ *             choiceId: 1
+ *     responses:
+ *       200:
+ *         description: Respuesta registrada (puntuación calculada por el servidor)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/RespuestaResultado"
+ *       400:
+ *         description: Id o cuerpo no válido, o la opción no pertenece a esa pregunta
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       401:
+ *         description: Token ausente, inválido o caducado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       403:
+ *         description: El usuario no participa en la partida
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       404:
+ *         description: La partida o la pregunta no existe
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       409:
+ *         description: La pregunta no está en turno, ya fue respondida o la partida ha finalizado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ */
+// Devuelve los datos del usuario autenticado
+/**
+ * @openapi
+ * /api/me:
+ *   get:
+ *     summary: Obtener el usuario autenticado
+ *     description: Devuelve los datos del usuario identificado por el token JWT.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Datos del usuario autenticado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   $ref: "#/components/schemas/UsuarioAutenticado"
+ *       401:
+ *         description: Token ausente, inválido o caducado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *   patch:
+ *     summary: Cambiar el nombre del usuario autenticado
+ *     description: Actualiza solo el displayName de la cuenta identificada por el JWT. No permite cambiar ID, email, rol ni puntuación.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: "#/components/schemas/ActualizarPerfilEntrada"
+ *           example:
+ *             displayName: "Ana"
+ *     responses:
+ *       200:
+ *         description: Perfil actualizado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   $ref: "#/components/schemas/UsuarioAutenticado"
+ *       400:
+ *         description: Nombre inválido o cuerpo con campos no permitidos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *             example:
+ *               error:
+ *                 code: VALIDATION_ERROR
+ *                 message: Los datos enviados no son válidos
+ *       401:
+ *         description: Token ausente, inválido o caducado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ */
+app.get("/api/me", authMiddleware, meController);
 
-  // Respondemos con 204 sin contenido.
-  return res.status(204).send();
-});
+/**
+ * @openapi
+ * /api/me/games:
+ *   get:
+ *     summary: Historial de partidas del usuario autenticado
+ *     description: |
+ *       Devuelve las partidas del usuario autenticado, de la más reciente a la más antigua.
+ *       Cada tarjeta incluye modo, estado, fechas, código de sala, participantes con nombre público,
+ *       puntuación propia, puntuaciones públicas visibles y resultado final cuando existe.
+ *       En multijugador, ninguna puntuación incluye una ronda pendiente de respuesta del rival.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, minimum: 1, default: 1 }
+ *       - in: query
+ *         name: pageSize
+ *         schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+ *     responses:
+ *       200:
+ *         description: Lista pública de partidas del usuario
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/HistorialPartidas"
+ *       400:
+ *         description: Parámetros de paginación inválidos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       401:
+ *         description: Token ausente, inválido o caducado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       500:
+ *         description: Error interno del servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ */
 
-// Si ninguna ruta anterior coincide con la petición,
-// devolvemos un error 404.
+/* Si ninguna ruta anterior coincide con la petición,
+ devolvemos un error 404.*/
 app.use(notFoundMiddleware);
 
 // Los errores inesperados se gestionan mediante este middleware.

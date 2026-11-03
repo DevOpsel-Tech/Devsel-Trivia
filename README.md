@@ -52,13 +52,13 @@ En un clon nuevo:
 
 ```bash
 npm ci
-cp .env.example .env
+Copy-Item .env.example .env
 npm run dev
 ```
 
 Abre <http://localhost:3000/>. Verás un JSON de bienvenida. El servidor se detiene con `Ctrl+C`. `.env` contiene la configuración local; está ignorado por Git. `.env.example` es la referencia compartida y no debe contener secretos reales.
 
-La base **no tiene `/health` todavía**: lo añades en el reto 01. El puerto por defecto es 3000; al cambiar `.env`, reinicia el proceso. No compartas ni subas contraseñas, tokens o archivos `.env`.
+El endpoint `/health` ya está disponible. El puerto por defecto es 3000; al cambiar `.env`, reinicia el proceso. No compartas ni subas contraseñas, tokens o archivos `.env`.
 
 ### Comandos de la base
 
@@ -71,8 +71,58 @@ La base **no tiene `/health` todavía**: lo añades en el reto 01. El puerto por
 | `npm run typecheck` | Comprueba tipos sin generar archivos |
 | `npm run build` | Comprueba y compila `src/` a `dist/` |
 | `npm start` | Ejecuta `dist/server.js`; necesita una compilación previa |
+| `npm run db:generate` | Genera Prisma Client desde `schema.prisma`; hace falta tras `npm ci` y después de cambios al esquema |
+| `npm run db:migrate:status` | Consulta si el historial local de migraciones coincide con la base indicada por `DATABASE_URL`; no aplica cambios |
+| `npm run db:migrate:dev` | Crea y aplica migraciones de desarrollo. Cambia tablas; ejecútalo solo contra la base de prácticas acordada |
+| `npm run seed` | Inserta las preguntas de práctica que aún no existan, buscando por enunciado |
+| `npm run db:studio` | Abre Prisma Studio local, normalmente en `http://localhost:5555`, para inspeccionar y editar datos |
+| `npm test` | Ejecuta las pruebas automatizadas con Vitest y mocks; no necesita base de datos |
+| `npm run test:integration` | Ejecuta las pruebas de integración con Supertest contra la base de datos de pruebas; requiere tenerla configurada (ver `tests/README.md`) |
 
-`tsx` ejecuta el código, pero no sustituye la comprobación de tipos. No hay `lint`, `test` ni scripts de DB todavía: se incorporarán cuando exista una herramienta y una comprobación real detrás. Antes de entregar, ejecuta siempre `typecheck` y `build` y las pruebas que ya se hayan incorporado.
+`tsx` ejecuta el código, pero no sustituye la comprobación de tipos. No hay script `lint` todavía. Ya existen pruebas automatizadas: `npm test` (Vitest con mocks, sin base de datos) y `npm run test:integration` (contra una base de datos PostgreSQL real de pruebas). El detalle está en `tests/README.md`. Antes de entregar, ejecuta siempre `typecheck`, `build` y las pruebas.
+
+### PostgreSQL y Prisma (Reto 06)
+
+Prisma CLI, Prisma Client y el adaptador PostgreSQL están declarados en `package.json` en la serie **7.10.0** (`prisma`, `@prisma/client` y `@prisma/adapter-pg`); `pg` está en la serie **8.23.1**. Comprueba las versiones exactas instaladas con `npm ls prisma @prisma/client @prisma/adapter-pg pg --depth=0`. El proyecto requiere Node **24.x**.
+
+Para configurar una instalación local:
+
+1. En Railway selecciona el servicio PostgreSQL del entorno de **desarrollo/prácticas** y copia su `DATABASE_PUBLIC_URL`. Desde el PC se usa la URL pública; no uses `*.railway.internal`, que es para servicios comunicándose dentro de Railway.
+2. Copia `.env.example` a `.env` y coloca el valor completo de la URL en `DATABASE_URL`. No incluyas credenciales reales en Git, documentación, capturas ni mensajes. Antes de cualquier operación que escriba, comprueba el host y entorno destino; nunca uses la base de producción para prácticas.
+3. Instala dependencias y genera el cliente:
+
+   ```powershell
+   npm ci
+   Copy-Item .env.example .env
+   # Añade DATABASE_URL en .env con la URL pública del entorno BBDD.
+   npm run db:generate
+   ```
+
+   Prisma 7 no genera automáticamente Prisma Client al aplicar migraciones. Ejecuta `db:generate` tras una instalación limpia y después de cambiar el esquema.
+4. Comprueba primero el destino y el estado sin modificar la base:
+
+   ```powershell
+   npm run db:migrate:status
+   ```
+
+5. Solo con el host de la base de prácticas confirmado, crea/aplica las migraciones de desarrollo y carga las preguntas:
+
+   ```powershell
+   npm run db:migrate:dev
+   npm run db:generate
+   npm run seed
+   ```
+
+   `migrate dev` puede requerir que PostgreSQL permita crear una shadow database. Si no es posible, configura una shadow database vacía separada siguiendo la guía de la versión de Prisma; nunca uses producción como shadow. Desde el reto 09, el historial parte de la migración inicial `20261015124955_init_reto09`, que crea Category, Question y Option en una base vacía. El tutor autorizó reiniciar la base de prácticas y regenerar el historial para corregir discrepancias provocadas por cambios manuales. La conversión histórica de `Question.solution` de texto a índice pertenece a la entrega del reto 06 y ya no forma parte del historial actual.
+6. Abre `npm run db:studio` o la vista de datos de Railway para inspeccionar `Question` y `_prisma_migrations`. Para verificar la idempotencia del seed, cuenta filas antes, ejecútalo dos veces, vuelve a contar y registra los resultados reales. Cerrar y reabrir Studio no borra los datos persistidos en PostgreSQL.
+
+El modelo está en `prisma/schema.prisma`, el historial reproducible en `prisma/migrations/` y el seed en `src/lib/seed.ts`. El cliente Prisma local y los comandos CLI leen `DATABASE_URL`; las rutas de la API siguen usando datos en memoria hasta el reto 07. Un backend alojado en Railway puede usar la URL privada de PostgreSQL del mismo entorno. La CLI `migrate status` solo inspecciona el historial; `migrate dev` cambia el esquema y `seed` inserta datos.
+
+Las pruebas de integración (`npm run test:integration`) no usan la base de prácticas, sino una base de datos PostgreSQL **local** y separada (`trivia_test`), porque crean y borran datos. Se configura con `tests/.env.test` (ignorado por Git) y se detalla en `tests/README.md`. El comando `npm test` no toca ninguna base de datos.
+
+El reinicio acordado en el [reto 09](retos/09-relaciones.md) es una excepción puntual, con pérdida de los datos anteriores aceptada por el tutor. A partir de esa base se conserva la migración inicial y se crean migraciones nuevas para los siguientes retos. No repitas el borrado del historial ni el reset como solución habitual.
+
+El frontend vive en [trivia-app-frontend](https://github.com/josepracticas123/trivia-app-frontend). Después del reto 20 se completa el [reto 20B de jugabilidad](retos/20b-jugabilidad.md) en ambos repositorios, antes del despliegue (21) y la revisión final (22).
 
 ## Estructura y responsabilidades
 
@@ -83,7 +133,7 @@ TriviaApp_Backend/
 ├── retos/                  # Enunciados, checks y revisión
 ├── docs/                   # Eventos y despliegue cuando aparezcan
 ├── prisma/                 # Esquema, migraciones y seed desde el reto 06
-├── tests/                  # Pruebas importantes cuando se incorporen
+├── tests/                  # Pruebas automatizadas (ver tests/README.md)
 ├── .github/                # Plantilla de pull request
 ├── .env.example
 ├── package.json
@@ -99,7 +149,7 @@ TriviaApp_Backend/
     ├── schemas/            # Validaciones de datos recibidos
     ├── types/              # Tipos e interfaces propios
     ├── data/               # Datos en memoria de los primeros retos
-    ├── lib/                # Cliente Prisma y configuración compartida
+    ├── lib/                # Cliente Prisma y seed
     ├── docs/               # Configuración OpenAPI/Swagger
     └── sockets/            # Conexión, autorización y eventos desde el reto 18
 ```
@@ -243,6 +293,7 @@ Todos parten como pendientes. **Implementado** significa que el alumno completó
 | 18 | [Añade avisos en tiempo real](retos/18-socket-io.md) | Pendiente |
 | 19 | [Recupera una partida al reconectar](retos/19-reconexion.md) | Pendiente |
 | 20 | [Conecta un frontend mínimo](retos/20-frontend.md) | Pendiente |
+| 20B | [Dale claridad a la experiencia de juego](retos/20b-jugabilidad.md) | Pendiente |
 | 21 | [Despliega backend, DB y frontend](retos/21-despliegue.md) | Pendiente |
 | 22 | [Entrega y revisión final](retos/22-entrega-final.md) | Pendiente |
 
@@ -251,6 +302,28 @@ Todos parten como pendientes. **Implementado** significa que el alumno completó
 Antes de cada PR, los tipos y la compilación deben pasar. Swagger y las pruebas manuales no sustituyen las pruebas automatizadas de permisos y concurrencia que aparecerán después. Las comprobaciones deben indicar qué se ejecutó realmente; un check no es evidencia si no se probó.
 
 Hasta el reto 12, el CRUD todavía no tiene permisos: úsalo solo en desarrollo local. A partir de ahí, registro y login son públicos, las consultas del catálogo son públicas, el CRUD es de ADMIN y partidas e historial exigen sesión y pertenencia.
+
+### Crear un administrador local
+
+El registro público siempre crea usuarios con el rol `USER`. El cliente no puede elegir el rol ni convertirse en administrador enviando `role: "ADMIN"`.
+
+Para preparar un administrador solo en desarrollo local:
+
+1. Registra un usuario mediante `POST /api/auth/register`.
+2. Ejecuta en la base de datos local:
+
+```sql
+-- Solo para desarrollo local.
+-- No crea ni modifica contraseñas.
+UPDATE "user"
+SET role = 'ADMIN'
+WHERE email = 'admin-local@ejemplo.com';
+```
+
+3. Inicia sesión de nuevo mediante `POST /api/auth/login`.
+4. Usa el token recibido en las rutas privadas con `Authorization: Bearer <token>`.
+
+No subas al repositorio contraseñas, tokens ni el archivo `.env`.
 
 En el reto 06 se añadirán instrucciones comprobadas para PostgreSQL en Railway, Prisma y sus versiones. Para trabajar desde el PC, el valor de `DATABASE_PUBLIC_URL` de Railway se guarda como `DATABASE_URL` en el `.env` local; las direcciones privadas `railway.internal` se usan entre servicios de Railway. En el 21 se documentarán URLs, variables, migraciones y recuperación. Desarrollo y pruebas no usarán la DB de producción. Los secretos se configuran en el alojamiento; el frontend solo recibe la URL pública de la API.
 
@@ -270,4 +343,3 @@ Emparejamiento automático, temporizadores, chat, recuperación de contraseña, 
 - [Socket.IO](https://socket.io/docs/v4/).
 
 Empieza por [01 · Arranca tu backend](retos/01-primer-servidor.md) después de que el tutor prepare `develop`.
-

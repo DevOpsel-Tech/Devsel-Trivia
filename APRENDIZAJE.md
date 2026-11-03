@@ -168,128 +168,684 @@ En cada reto anota:
 
 ## 06 · Prepara PostgreSQL y Prisma
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- Lo que he construido:
+  En este reto he dejado la base de desarrollo de Railway alineada con el estado actual del repositorio. He configurado Prisma 7 con PostgreSQL, he centralizado el cliente en src/lib/prisma.ts, he definido el modelo Question en prisma/schema.prisma y he validado la inserción de preguntas con el seed de src/lib/seed.ts.
+
+  El modelo contiene `id`, `statement`, `options` y `solution`. `solution` es un índice de base cero (0–3), igual que `respuestaCorrecta` en el contrato de la API.
+  El cliente compartido está en `src/lib/prisma.ts`; el seed está en `src/lib/seed.ts`.
+
+- Conceptos y explicación propia:
+
+  `schema.prisma` describe el modelo; una migración contiene SQL versionado que modifica la estructura PostgreSQL y su aplicación se registra en `_prisma_migrations`. `prisma generate` crea el cliente TypeScript y no cambia la base. El seed inserta datos y no cambia el esquema.
+  `PrismaClient` expone las consultas del modelo en TypeScript; `PrismaPg` conecta ese cliente con PostgreSQL usando el driver `pg`.
+  El cliente centralizado construye `PrismaClient` con `PrismaPg` y `DATABASE_URL`. Desde el PC se requiere el endpoint público de Railway; la dirección privada `*.railway.internal` se usa para comunicación entre servicios en Railway.
+
+  El seed hace `findFirst` para buscar por `statement`; `await` espera cada consulta, `continue` omite la inserción si ya existe y `$disconnect` cierra el cliente al terminar. Si se cambia el enunciado, la búsqueda ya no lo reconoce y puede insertar otra pregunta. Si se mantienen iguales el enunciado pero se cambian opciones o solución, este seed no actualiza esos campos.
+
+- Pruebas y resultados:
+
+  En la base de prácticas confirmada:
+  - `npm run db:migrate:status` → 2 migraciones encontradas; `Database schema is up to date!`.
+  - Consulta de `_prisma_migrations` → `20261006112344_init` y `20261006164700_solution_text_to_index`; ambas tienen `finished_at` y no están marcadas como revertidas.
+  - Consulta de `information_schema.columns` para `Question` → `id integer NOT NULL`, `statement text NOT NULL`, `options jsonb NOT NULL`, `solution integer NOT NULL`.
+  - `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code` → `No difference detected`.
+  - Conteos con `SELECT count(*)::integer AS questions FROM "Question"`: antes del seed, 5; después de la primera ejecución de `npm run seed`, 5; después de la segunda ejecución, 5; tras cerrar la conexión y consultar de nuevo, 5. Ambas ejecuciones indicaron que las cinco preguntas ya existían.
+  - `npx prisma validate` → esquema válido.
+
+  Según la revisión del tutor del commit `798f829`, `prisma generate`, `npm run typecheck`, `npm run build` y las comprobaciones básicas de rutas y Swagger pasaban. En esta actualización no volví a ejecutar esas pruebas.
+
+- Error y solución:
+
+  Desde el PC, `postgres.railway.internal` no resolvía porque es una dirección privada de Railway. Para el desarrollo local se necesita el dominio/puerto públicos del entorno de prácticas. Prisma 7 también requiere el adaptador `@prisma/adapter-pg` para este cliente.
+
+  La migración temporal `20261006122355_test` intentaba ejecutar `ALTER TABLE "Question" ADD COLUMN "test" TEXT NOT NULL;`, sin valor por defecto. Prisma advertía que añadir esa columna obligatoria no era posible si `Question` ya tenía filas. Como se borró después el registro de la migración y no se conserva la salida original del comando, no se puede confirmar retrospectivamente si llegó a aplicarse; la comprobación actual sí confirma que `test` no forma parte del esquema.
+
+  Después se borraron los archivos de esa migración de VS Code/carpeta y no se subieron al repositorio remoto, mientras el registro del intento seguía en `_prisma_migrations`. Eso produjo una segunda incidencia, distinta del error SQL: Prisma encontraba una migración registrada en la base cuyos archivos ya no estaban en `prisma/migrations` y no podía reconciliar ambos historiales. Para quitar ese bloqueo se borró manualmente de la base la fila correspondiente.
+
+  Borrar esa fila quitó únicamente el registro del historial; no es un mecanismo para revertir SQL. La columna no aparece en la estructura actual: `migrate diff` no detecta diferencias con `schema.prisma`, y `Question` tiene solo las cuatro columnas del modelo. El SQL recuperado confirma que la migración consistía en una única instrucción para añadir `test`; su advertencia explica el posible fallo si se ejecutaba con filas existentes, pero el resultado histórico no se puede verificar ya. Si vuelve a existir una discrepancia, se debe inspeccionar el esquema real y acordar cualquier reparación con el tutor, sin borrar filas del historial para silenciarla.
+
+  Comprobación actual de la base de prácticas: solo están registradas como finalizadas `20261006112344_init` y `20261006164700_solution_text_to_index`; la tabla `Question` existe con las cuatro columnas y tipos descritos arriba, no se detectan diferencias frente a `schema.prisma`, y las únicas tablas del esquema `public` son `Question` y `_prisma_migrations`. El SQL recuperado de la migración de prueba confirma que intentaba añadir `test TEXT NOT NULL`; la estructura actual demuestra que esa columna no existe ahora.
+
+- Dudas:
+
+  La migración intentaba añadir `test TEXT NOT NULL` sin valor por defecto, lo que podía fallar si la tabla ya tenía filas. Al borrarse los archivos dejando el registro se creó una discrepancia de historial; se quitó manualmente esa fila. Como no se conserva el resultado original del intento, no se puede confirmar si llegó a aplicarse; la comparación actual confirma que el esquema está alineado y que `test` no existe ahora. Las correcciones documentales de esta revisión siguen pendientes de commit y push al PR. No hacer cambios de reparación sin acordarlos primero con el tutor.
+
+- PR y correcciones:
+
+  El PR #7 sigue abierto hacia `develop`. La revisión del tutor sigue pendiente; no empezar el reto 07.
 
 ## 07 · Guarda las preguntas de verdad
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- Lo que he construido:
+  He sustituido en `src/app.ts` las operaciones CRUD de preguntas en memoria por consultas Prisma a PostgreSQL. La API conserva los campos públicos `id`, `enunciado` y `opciones`; guarda `respuestaCorrecta` como `solution`, pero no devuelve la solución al cliente.
+
+- Conceptos y explicación propia:
+  `async` permite que una ruta espere consultas asíncronas y `await` espera el resultado de PostgreSQL antes de construir la respuesta HTTP. `findMany` lista, `findUnique` busca por ID, `create` inserta, `update` modifica y `deleteMany` elimina y permite revisar `count` para responder 404 si no encontró una fila.
+
+  Prisma Client da acceso tipado al modelo generado; no crea ni modifica tablas por sí mismo. Las migraciones modifican el esquema de la base y el seed inserta datos de práctica. La base persiste aunque se reinicie el backend porque el backend es solo el cliente que se conecta a PostgreSQL; borrar filas o reiniciar/borrar la base sí elimina los datos.
+
+  Las rutas usan `select` para pedir solo los campos públicos. Después convierten `statement` a `enunciado` y `options` a `opciones`, conservando el contrato de la API sin exponer `solution`.
+
+- Pruebas y resultados:
+  - `npm run typecheck` → correcto.
+  - `npm run build` → correcto.
+  - En pruebas locales con consultas simuladas: GET de lista y por ID respondieron correctamente; POST de pregunta temporal → 201 con `id`, `enunciado` y `opciones`, sin solución; PUT → 200; DELETE → 204 y GET posterior → 404.
+  - Esas pruebas simuladas no verifican que los cambios persistan en Railway tras reiniciar el backend. La comprobación contra la base real de desarrollo queda pendiente.
+  - PUT con ID numérico inexistente → 404 `QUESTION_NOT_FOUND`.
+  - Prueba local con `DATABASE_URL` temporal no válida: GET de lista → 500 `INTERNAL_SERVER_ERROR`, no lista vacía ni éxito. No se modificó `.env`.
+  - Thunder Client: GET `/api/questions/0` → 400 `VALIDATION_ERROR`.
+  - Thunder Client: GET `/api/questions/2147483648` → 400 `VALIDATION_ERROR`.
+  - Thunder Client: GET `/api/questions/2147483647` → 404 `QUESTION_NOT_FOUND`; el ID está dentro del rango, pero no existe.
+  - Thunder Client: GET `/api/questions/1` → 200; devuelve la pregunta sin `respuestaCorrecta`.
+  - Thunder Client: PUT `/api/questions/0` con un body válido → 400 `VALIDATION_ERROR`; no se modificaron datos.
+  - Thunder Client: DELETE `/api/questions/2147483648` → 400 `VALIDATION_ERROR`; no se eliminaron datos.
+  - Tras las correcciones de validación, `npm run typecheck` → correcto y `npm run build` → correcto.
+
+- Error y solución:
+  Durante el cambio de POST quedó código antiguo de memoria duplicado y un cierre de ruta fuera de lugar; se reemplazó la ruta completa por una llamada `prisma.question.create`. Durante PUT, `res.json` tenía propiedades sin envolver en un objeto; se corrigió la sintaxis. En la prueba de conexión, se pegaron comandos de PowerShell en el editor por error; se retiraron de `app.ts` y el typecheck volvió a pasar.
+
+- Dudas:
+  Al principio me surgió la duda de cómo distinguir un ID inexistente de un fallo de conexión con la base de datos. Quedó resuelta: el ID inexistente responde 404 y los errores de conexión se propagan al middleware, que responde 500.
+
+- PR y correcciones:
+  Rama `reto/07-crud-persistente`; el commit `1090c67` y el PR ya existen. El tutor solicitó cambiar la base del PR a `develop`, corregir la validación del rango del ID, ampliar las pruebas y completar los registros. Correcciones actuales pendientes de subir a la misma rama y PR; aprobación y merge pendientes.
 
 ## 08 · Organiza el backend
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- Lo que he construido:
+  He separado las cinco operaciones del CRUD de preguntas en `src/routes/questions.routes.ts`, `src/controllers/question.controller.ts` y `src/services/question.service.ts`. `app.ts` configura Express, conserva la documentación OpenAPI y monta `questionRouter` bajo `/api/questions`. `server.ts` sigue siendo quien abre el puerto.
+
+- Conceptos y explicación propia:
+  Una ruta asocia un método y un camino HTTP con un controlador; por ejemplo, `GET /api/questions/:id` se declara como `questionRouter.get("/:id", getQuestionByIdController)`. El montaje `app.use("/api/questions", questionRouter)` añade el prefijo común. El controlador trabaja con `req` y `res`: valida parámetros o cuerpo, llama al servicio y traduce el resultado a una respuesta HTTP. El servicio recibe datos normales y consulta Prisma, sin importar Express.
+
+  En `GET /api/questions/1`, la petición pasa por el montaje del router, entra en la ruta `/:id`, el controlador valida el ID con Zod y llama a `getQuestionById(1)`. El servicio consulta PostgreSQL con Prisma y devuelve solo `id`, `statement` y `options`; el controlador los presenta como `id`, `enunciado` y `opciones`. Para un evento de Socket.IO se podría reutilizar `getQuestionById(id)`, no el controlador, porque un evento no tiene `req` ni `res`. Esa función no devuelve la solución correcta.
+
+- Pruebas y resultados:
+  - `npm.cmd run typecheck` → correcto.
+  - `npm.cmd run build` → correcto.
+  - Contra el servidor local: `GET /api/questions` → 200; devuelve un array de 5 preguntas con `id`, `enunciado` y `opciones`, sin `respuestaCorrecta`.
+  - `GET /api/questions/1` → 200; devuelve `id`, `enunciado` y `opciones`, sin `respuestaCorrecta`.
+  - En Swagger, POST `/api/questions` con una pregunta temporal válida → 201; GET por el ID devuelto → 200; PUT con datos válidos → 200 y GET posterior confirma el cambio; DELETE → 204 y GET posterior → 404.
+  - `POST /api/questions` con un body inválido → 400 `VALIDATION_ERROR`.
+  - `PUT /api/questions/0` con un body válido → 400 `VALIDATION_ERROR`; el ID inválido se rechaza antes de llamar al servicio.
+  - `DELETE /api/questions/0` → 400 `VALIDATION_ERROR`; el ID inválido se rechaza antes de llamar al servicio.
+  - `GET /docs` → 200 y muestra Swagger UI.
+  - `GET /api/openapi.json` → 200; documenta GET y POST en `/api/questions`, y GET, PUT y DELETE en `/api/questions/{id}`.
+  - El ciclo CRUD válido se realizó en Swagger contra el servidor de desarrollo. No se repitieron las peticiones HTTP contra `dist`; las pruebas de ejecución de la versión compilada quedan pendientes.
+
+- Error y solución:
+  Antes, las rutas y consultas de preguntas estaban concentradas en `app.ts`, mezclando configuración HTTP, validación y acceso a la base de datos. Las fui separando: el router declara endpoints, cada controlador maneja la petición y la respuesta, y el servicio concentra las consultas Prisma. El router se monta con el mismo prefijo `/api/questions` para conservar las URLs públicas.
+
+- Dudas:
+  Duda resuelta: si una pregunta no existe, el servicio no necesita conocer HTTP. `getQuestionById` devuelve `null` y el controlador convierte ese resultado en 404 `QUESTION_NOT_FOUND`. Así se mantiene separada la consulta de datos de la respuesta HTTP. No me quedan dudas pendientes sobre este punto.
+
+- PR y correcciones:
+  La rama actual es `reto/08-rutas-controladores-servicios`. Los cambios siguen sin commit y no hay una PR abierta para el reto 08. Antes de solicitar revisión, debo ejecutar las pruebas pendientes, completar los checks de autoevaluación del reto con resultados reales, crear el commit y abrir una PR hacia `develop` sin hacer merge.
 
 ## 09 · Relaciona preguntas, opciones y categorías
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- Lo que he construido:
+  - He relacionado cada pregunta con una categoría mediante `categoryId` y con sus opciones mediante el modelo `Option`.
+  - He añadido `GET /api/categories`, que devuelve las categorías disponibles con `id` y `name`.
+  - He adaptado el CRUD de preguntas para recibir y devolver `categoryId`; las respuestas públicas siguen sin mostrar la opción correcta.
+  - He actualizado Swagger con el esquema `Categoria`, el campo `categoryId` y los ejemplos de creación y actualización.
+
+- Conceptos y explicación propia:
+  - `categoryId` es una clave foránea: conecta una pregunta con una categoría existente y evita referencias rotas.
+  - La relación es de una categoría a muchas preguntas y de una pregunta a muchas opciones. Cada opción guarda su texto, posición e información interna de si es correcta.
+  - `onDelete: Cascade` significa que al borrar una pregunta, PostgreSQL borra también sus opciones para no dejar filas huérfanas.
+  - El controlador valida primero el formato del `categoryId` con Zod y después consulta si esa categoría existe antes de crear o actualizar. Por eso una categoría inexistente devuelve 400 sin modificar datos.
+
+- Pruebas y resultados (repetidas tras la regeneración de la base, ver "Error y solución"):
+  - `GET /api/categories` respondió `200` con las cuatro categorías: Geografía (1), Matemáticas (2), Ciencia (3) e Historia (4).
+  - `POST /api/questions` con `categoryId: 2` respondió `201` y devolvió `id`, `enunciado`, `categoryId` y las cuatro opciones, sin `respuestaCorrecta`.
+  - El mismo POST con `categoryId: 999999` respondió `400 VALIDATION_ERROR` y el mensaje `La categoría indicada no existe`, sin crear la pregunta.
+  - `PUT` sobre la pregunta creada, cambiándola a `categoryId: 3`, respondió `200` y guardó la nueva categoría y las cuatro opciones.
+  - `DELETE` respondió `204`; el `GET` posterior respondió `404 QUESTION_NOT_FOUND` y no quedaron opciones huérfanas.
+  - `npm.cmd run db:migrate:status` informa `1 migration found` (`20261015124955_init_reto09`) y `Database schema is up to date!`. La base contiene 6 preguntas, 4 categorías y 24 opciones.
+  - `npm.cmd run seed` ejecutado dos veces: la segunda reconoció las seis preguntas existentes y no creó duplicados.
+  - `npm.cmd run typecheck` y `npm.cmd run build` terminaron correctamente.
+  - En el primer envío, sobre la base anterior, ya se probó el CRUD completo con la pregunta ID 17 (PUT 200, DELETE 204, GET 404 y referencias inválidas 400); la lógica del CRUD no cambió con la regeneración.
+
+- Error y solución:
+  - La ruta de categorías se montó primero como `/api/categoies`, por lo que Swagger devolvía 404. Corregí la URL a `/api/categories`.
+  - El ejemplo YAML del PUT tenía `categoryId` con una indentación distinta del resto de campos. Al alinearlo correctamente Swagger volvió a interpretar la documentación.
+  - La primera migración del reto eliminaba las columnas `options` y `solution` sin copiarlas a `Option` y añadía `categoryId` obligatorio sin asignarlo, por lo que fallaba en una base con preguntas del esquema anterior (reproducido por el tutor: `column "categoryId" of relation "Question" contains null values`). Tras comentarlo en el PR, se acordó con el tutor borrar todo y empezar de cero: se eliminaron las carpetas de las tres migraciones, se ejecutó `npx prisma migrate reset --force` (vacía tablas, datos y `_prisma_migrations`), se generó una única migración nueva desde `schema.prisma` con `npx prisma migrate dev --name init_reto09` y se recargaron los datos con `npm run seed`. No se hizo ningún `DELETE` o `TRUNCATE` a mano: la herramienta de Prisma resetea el esquema completo y deja el historial consistente con la base real.
+  - En Swagger, `PreguntaInput.categoryId` tenía `maximum: 1` mientras que Zod admite hasta `2147483647`. Alineé ambos límites y lo comprobé con POST y PUT usando categorías existentes (2 y 3).
+
+- Dudas:
+  - `prisma migrate status` informa del estado del historial de migraciones; por sí solo no demuestra que los datos se hayan conservado. Las pruebas funcionales registradas comprueban el funcionamiento y los datos nuevos: en la base regenerada hay 6 preguntas, 4 categorías y 24 opciones, y el CRUD responde correctamente vía API. No demuestran conservación de los datos anteriores: en este caso se eliminaron con autorización del tutor.
+  - La migración original no conservaba los datos del esquema anterior; se acordó con el tutor regenerar el historial y la base desde cero en lugar de convertir los datos.
+
+- PR y correcciones:
+  - PR abierto hacia `develop` desde `reto/09-relaciones` (commit base revisado: `a4216fa`). Tras la primera revisión corregí el límite de `categoryId` en Swagger y el registro del reto, y regeneré el historial de migraciones acordado con el tutor; las correcciones van en la misma rama y el mismo PR. No hago merge ni empiezo el reto 10 hasta la aprobación del tutor.
 
 ## 10 · Registra usuarios
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- Lo que he construido:
+  - Modelo `User` en Prisma (`id`, `email` único, `passwordHash`, `createdAt`) con su migración.
+  - Endpoint `POST /api/auth/register`: valida con Zod, normaliza el email (elimina espacios exteriores y convierte a minúsculas), exige una contraseña de al menos 8 caracteres y devuelve únicamente `id` y `email`.
+  - Servicio de registro con **Argon2**: genera el hash de la contraseña y guarda el usuario; si el email ya existe, devuelve `null` y el controlador responde con `409 EMAIL_ALREADY_EXISTS`.
+  - Validación del formato del email mediante Zod y rechazo de campos adicionales.
+  - Documentación Swagger con los esquemas `RegistroEntrada` y `UsuarioPublico`, probada desde `/docs` con respuestas `201`, `400` y `409`.
+
+- Conceptos y explicación propia:
+  - **Hash ≠ cifrar**: el hash es una transformación de una sola vía; no se puede recuperar directamente la contraseña original a partir del hash. El cifrado sí permite recuperar el contenido mediante la clave correspondiente. Para almacenar contraseñas se utiliza un algoritmo de hash adecuado.
+  - La restricción `@unique` del email en la base de datos es la que evita duplicados de verdad. Comprobar el email antes del `INSERT` no basta porque dos peticiones podrían llegar a la vez (condición de carrera). El servicio interpreta el error `P2002` de Prisma para traducirlo a `409 EMAIL_ALREADY_EXISTS`.
+  - Argon2 genera y utiliza una sal, que queda representada en el hash almacenado. No hay que inventar una sal manualmente ni utilizar algoritmos rápidos como SHA-256 para almacenar contraseñas.
+  - El email se normaliza con `trim` y minúsculas para que `" Juan@EMAIL.com "` y `"juan@email.com"` se traten como la misma dirección. La contraseña no se modifica.
+  - El `select: { id: true, email: true }` del servicio limita los datos devueltos y evita que `passwordHash` se exponga en la respuesta al cliente.
+
+- Pruebas y resultados:
+  - Registro válido con `{"email":"  Juan@EMAIL.com ","password":"secreta123"}` → `201 Created`, con el email normalizado y únicamente los campos públicos.
+  - Email válido con espacios exteriores y mayúsculas (`"  PruebaOctubre16b@Example.com  "`) → `201 Created`, devolviendo `pruebaoctubre16b@example.com`.
+  - Mismo email con otra grafía (`JUAN@email.com`) → `409 EMAIL_ALREADY_EXISTS`; no se crea un segundo usuario con la misma dirección.
+  - Email malformado `a@b..com` → `400 VALIDATION_ERROR`.
+  - Email malformado `.jose@example.com` → `400 VALIDATION_ERROR`.
+  - Contraseña inferior a 8 caracteres, incluida una contraseña de 6 caracteres → `400 VALIDATION_ERROR`.
+  - Campo adicional no permitido, por ejemplo `"admin": true` → `400 VALIDATION_ERROR`.
+  - JSON malformado → `400 INVALID_JSON`.
+  - Respuesta pública comprobada: contiene `id` y `email`, sin exponer la contraseña original ni el hash.
+  - `npm.cmd run typecheck` y `npm.cmd run build` terminaron correctamente.
+
+- Error y solución:
+  - Escribí `passwordHas` en vez de `passwordHash`. Corregí el esquema de Prisma y generé de nuevo el cliente.
+  - La migración `20261015143436_fix_user_column` se aplicó en Railway el 15/10/2026 a las 16:34:38. Al revisar su SQL, comprobé que elimina la columna `passwordHas` y crea `passwordHash`; no renombra la columna ni copia los datos de la anterior.
+  - El usuario de prueba se creó después de aplicar la migración. Por tanto, su hash no existía en la columna eliminada antes de la migración y no se perdió el hash de ese usuario por ese cambio. Esta conclusión se limita al usuario de prueba cuya fecha se comprobó.
+  - No se ha restablecido la base de datos ni se ha eliminado o modificado el historial de migraciones. Como la migración ya está aplicada en Railway, no se deben modificar las migraciones existentes ni ejecutar nuevas operaciones sobre la base de datos sin consultar previamente con el tutor.
+  - `prisma.user` aparecía en rojo porque el cliente de Prisma estaba desactualizado tras el cambio de esquema. Se soluciona con `npm run db:generate` y, si es necesario, reiniciando el servidor de TypeScript de VS Code.
+  - El código de error del `409` se unificó a `EMAIL_ALREADY_EXISTS` en el controlador y la documentación.
+
+- Dudas:
+  - Diferencia entre hash y cifrado → resuelta: el hash no es reversible directamente; el cifrado permite recuperar el contenido con la clave.
+  - Por qué comprobar el email antes del `INSERT` no basta → resuelta mediante la restricción única y el tratamiento del error `P2002`.
+  - Cómo verificar un hash → Argon2 permite comprobar una contraseña candidata con `argon2.verify`, sin publicar el hash ni la contraseña en logs o documentación.
+  - Cómo actuar ante una migración ya aplicada → no modificar Railway ni el historial de migraciones sin acordar previamente con el tutor el procedimiento adecuado.
+
+- PR y correcciones:
+  - PR abierto hacia `develop` desde `reto/10-registro`, pendiente de revisión y aprobación del tutor.
+  - No hacer merge ni comenzar el reto 11 hasta recibir la aprobación del tutor.
 
 ## 11 · Inicia sesión
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- **Lo que he construido:** He creado el endpoint `POST /api/auth/login`. Valida los datos recibidos, comprueba las credenciales y devuelve un token JWT con una duración de una hora y los datos públicos del usuario.
+
+- **Conceptos y explicación propia:**
+  - Normalizo el email con Zod: elimino espacios exteriores y convierto el email a minúsculas.
+  - Compruebo la contraseña con Argon2, comparándola con el hash guardado en la base de datos.
+  - Uso JWT para identificar al usuario sin incluir su contraseña ni su hash en el token.
+  - El token contiene el ID del usuario en `sub` y caduca en una hora.
+  - `JWT_SECRET` es obligatorio y debe configurarse mediante una variable de entorno.
+  - Si el email no existe o la contraseña es incorrecta, devuelvo el mismo error genérico `401 INVALID_CREDENTIALS`.
+
+- **Pruebas y resultados:**
+  - Swagger: el login correcto devuelve `200`; las credenciales incorrectas devuelven `401`.
+  - Vitest: 2 pruebas superadas.
+  - Las pruebas verifican el JWT, el identificador `sub`, la duración y que no se expongan contraseñas ni hashes.
+  - `npm.cmd run typecheck`: correcto.
+  - `npm.cmd run build`: correcto, si has confirmado que terminó sin errores.
+
+- **Error y solución:** Durante las pruebas manuales apareció un error `500` por una URL de base de datos mal escrita. Corregí la configuración de `DATABASE_URL` y el login funcionó correctamente.
+
+- **Dudas:** Ninguna pendiente por ahora.
+
+- **PR y correcciones:** Pendiente de crear la pull request hacia `develop`. No se debe fusionar todavía.
+- **Nota: José**
+  Hash de contraseña
+  Sirve para almacenar y comprobar contraseñas sin guardarlas directamente.
+
+  Firma del JWT
+  Permite detectar cambios y verificar que el token es auténtico.
+
+  Caducidad (exp)
+  Limita el tiempo durante el cual se acepta el token.
+
+¿Por qué el contenido del JWT es legible y su firma protege frente a modificaciones?
+Un JWT tiene tres partes: cabecera, contenido y firma.
+
+- Contenido legible: el contenido no está cifrado, así que cualquiera que tenga el token puede leer datos como el ID del usuario (sub) y la fecha de caducidad (exp). Por eso nunca debemos guardar contraseñas ni hashes dentro del token.
+- Firma: se genera usando el contenido del token y el secreto JWT_SECRET. Cuando el servidor verifica el token, comprueba que la firma sea válida. Si alguien modifica el contenido, la firma ya no coincide y el token se rechaza.
+- Caducidad (exp): indica cuándo deja de ser válido el token. En nuestro reto, dura una hora.
+- Decodificar y verificar: decodificar permite leer el contenido; verificar comprueba la firma y la caducidad.
 
 ## 12 · Protege las rutas
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- **Lo que he construido:**
+  - Middleware de autenticación JWT para proteger las rutas privadas mediante el encabezado `Authorization: Bearer <token>`.
+  - Validación de la firma, el algoritmo permitido (`HS256`), la caducidad, el identificador `sub` y la existencia del usuario en la base de datos.
+  - Endpoint `GET /api/me` para consultar la información del usuario autenticado.
+  - Sistema de roles `USER` y `ADMIN`, con `USER` como valor predeterminado.
+  - Middleware de autorización para restringir la creación, actualización y eliminación de preguntas a usuarios con rol `ADMIN`.
+  - Acceso público a las consultas de preguntas y categorías.
+  - Configuración de Swagger para documentar la autenticación Bearer y la seguridad de las rutas protegidas.
+  - Validación del registro para impedir que el cliente envíe campos adicionales, como `role: "ADMIN"`.
+
+- **Conceptos y explicación propia:**
+  - **Autenticación:** verifica quién realiza una petición.
+  - **Autorización:** determina qué operaciones puede realizar el usuario autenticado.
+  - **JWT:** token firmado que permite autenticar peticiones sin enviar la contraseña en cada solicitud.
+  - **Bearer token:** forma de enviar el token en la cabecera `Authorization`.
+  - **401 Unauthorized:** indica que faltan credenciales válidas o que el token no es válido.
+  - **403 Forbidden:** indica que el usuario autenticado no tiene permisos suficientes.
+  - La autenticación y la autorización se comprueban en el servidor; no basta con ocultar opciones en la interfaz.
+  - Los permisos se aplican en las rutas protegidas mediante middleware.
+  - El registro público debe asignar el rol `USER` en el servidor y no permitir que el cliente se conceda privilegios de administrador.
+
+- **Pruebas y resultados:**
+  - `npm test`: **18 tests superados en 4 archivos**.
+  - Middleware JWT: pruebas de token ausente, token inválido, token caducado, token sin `exp`, `sub` fuera de rango (0, 2147483648 y un valor que excede los enteros seguros) y usuario inexistente. También una prueba de token válido que continúa y guarda el identificador.
+  - Middleware de autorización: prueba de que un usuario `USER` recibe `403 Forbidden` al intentar realizar una operación de administrador.
+  - Controlador de autenticación: pruebas de inicio de sesión correcto, credenciales incorrectas y rechazo del registro cuando se envía `role: "ADMIN"`.
+  - Rutas de categorías: prueba automatizada que verifica que `GET /api/categories` es pública y devuelve las categorías esperadas. El servicio está simulado para no acceder a la base de datos real.
+  - Rutas de preguntas: prueba automatizada de que `GET /api/questions` es pública y devuelve el formato público correcto.
+  - Rutas de preguntas protegidas: `POST /api/questions` sin token devuelve `401`; con JWT válido de un `USER` devuelve `403`; con JWT válido de un `ADMIN` crea la pregunta y devuelve `201`.
+  - Las pruebas de rutas simulan Prisma y los servicios necesarios, por lo que no dependen de la base de datos real.
+  - `npm run typecheck`: finalizado sin errores en la última comprobación realizada.
+  - `npm run build`: compilación correcta en la comprobación anterior.
+  - Prueba manual de `GET /api/me`: devuelve la información del usuario autenticado.
+  - Prueba manual de permisos: un usuario `USER` recibe `403 Forbidden` al intentar crear una pregunta.
+  - Pruebas manuales con un usuario `ADMIN`: creación, actualización y eliminación de preguntas realizadas correctamente.
+
+- **Error y solución:**
+  - Se comprobó la necesidad de rechazar tokens asociados a usuarios que ya no existen en la base de datos.
+  - Se añadió un test que verifica que el middleware devuelve `401 Unauthorized` cuando el usuario del token no existe.
+  - Al crear el test de categorías, se detectó que `expect`, `describe` e `it` debían importarse desde `vitest`, no desde `node:test`. Se corrigió el import y las pruebas pasaron correctamente.
+  - **Corrección de la segunda revisión del tutor (commit `5fcae49`):** `jwt.verify` solo comprueba la caducidad si el token trae `exp`, por lo que un token firmado sin ese campo era aceptado. Ahora se exige que `exp` exista y sea un número finito, con su prueba (401 sin consultar la base).
+  - **Corrección de rango de `sub`:** la regex rechazaba textos, pero permitía valores como `2147483648` que llegaban a la consulta de Prisma. Ahora `sub` se convierte a número y se comprueba que sea un entero seguro entre 1 y 2147483647 antes de tocar la base, con pruebas para `0`, fuera de rango y un valor que excede los enteros seguros.
+  - **Mejora de tipado:** se añadió `src/types/express.d.ts` para declarar `res.locals.userId` como `number` mediante declaration merging; TypeScript avisa si se escribe mal el campo o se le asigna un valor que no es un número, sin usar `any` ni casts.
+  - El middleware verifica el JWT y consulta al usuario en la base de datos antes de permitir el acceso.
+
+- **Dudas y comprobaciones pendientes:**
+  - **¿Puede un usuario registrarse como administrador enviando `role: "ADMIN"`?** Se ha añadido un test que comprueba que el registro devuelve `400` y no llama al servicio de registro cuando se envía ese campo.
+  - **¿Puede un usuario normal modificar preguntas?** No. El middleware restringe esas operaciones al rol `ADMIN`; se ha comprobado manualmente que un usuario `USER` recibe `403` y existe un test automatizado para el middleware de autorización.
+  - **¿Qué ocurre si el token es inválido, caduca o pertenece a un usuario inexistente?** La petición se rechaza con `401`; estos casos tienen pruebas automatizadas.
+  - **¿Se pueden consultar preguntas y categorías sin autenticación?** Sí. Hay pruebas automatizadas para ambas rutas públicas. Las operaciones de escritura de preguntas requieren autenticación y rol `ADMIN`.
+  - **¿Cómo se prepara un administrador local?** El procedimiento está documentado en el README: se registra un usuario normal y el tutor modifica su rol localmente en la base de datos, sin guardar contraseñas ni tokens en Git.
+  - **¿Cómo se verifica el funcionamiento?** Mediante tests automatizados, chequeo de tipos, compilación y pruebas manuales de autenticación y permisos.
+
+- **PR y correcciones:**
+  - **Segunda revisión del tutor** sobre el commit `5fcae49`: pidió exigir `exp` en el token, validar el rango de `sub` antes de consultar Prisma y, como mejora opcional, tipar `res.locals`. Los tres puntos están aplicados en la misma rama, con pruebas nuevas (de 13 a 18) y `npm test`, `npm run typecheck` y `npm run build` en verde tras los cambios.
+  - Revisión final de Swagger completada: `POST /api/questions` documenta 201/400/401/403/500, `PUT /api/questions/{id}` 200/400/401/403/404/500 y `DELETE /api/questions/{id}` 204/400/401/403/404/500. Sin token responden 401 y ya no aparece la etiqueta "Undocumented".
+  - Comandos finales ejecutados de nuevo tras la revisión de Swagger: `npm test` (13 tests superados en 4 archivos), `npm run typecheck` y `npm run build`, todos correctos.
+  - Corrección de mantenimiento en la misma rama: erratas de comentarios en `src/`, solo texto, sin cambios de lógica.
+  - Rama `reto/12-autenticacion-permisos` publicada y PR hacia `develop` (commit base `1322480`); las correcciones van en la misma rama y el mismo PR. No fusionar hasta completar la revisión del tutor.
 
 ## 13 · Juega una partida individual
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- **Lo que he construido:**
+  - Migración con los modelos `Game`, `GamePlayer`, `GameQuestion`, `GameChoice`, `Answer` y el enum `GameStatus` (`ACTIVE`/`FINISHED`), con participantes relacionados aunque sea una partida individual para poder ampliar después.
+  - Copia congelada de las preguntas: `GameQuestion` guarda el enunciado, la posición y la solución (posición de la opción correcta), y las opciones se copian a `GameChoice`. Editar o borrar una pregunta del catálogo no altera una partida existente.
+  - `POST /api/games`: crea la partida con cinco preguntas aleatorias sin repetición, el participante y las copias en una sola transacción; devuelve 409 si hay menos de cinco preguntas en el catálogo.
+  - `GET /api/games/:id`: estado público construido campo a campo (nunca `res.json(game)`), con la cadena 400 (id) → 404 (no existe) → 403 (no participas) → 200, y sin exponer `solution`, `questionId` ni respuestas.
+  - `POST /api/games/:id/answers`: esquema zod `answerSchema` con `.strict()`, servicio `submitAnswer` con cuatro bloques de comprobaciones (partida y permisos, pregunta y turno, opción perteneciente, cálculo y guardado) y un controlador que traduce cada resultado del servicio a su código HTTP mediante una tabla.
+  - Cierre automático: al registrar la quinta respuesta, la misma transacción cambia el estado a `FINISHED` y rellena `finishedAt`.
+  - Swagger: schemas `PartidaEstado`, `RespuestaInput` y `RespuestaResultado`, y bloques `@openapi` para los tres endpoints de partidas.
+  - Validación de IDs reutilizando el esquema de retos anteriores (corrección de la revisión del tutor): el parámetro `:id` debe ser una cadena de dígitos entre 1 y 2147483647 mediante el alias `idParamSchema`, y `gameQuestionId`/`choiceId` son números enteros en ese mismo rango; todo se valida ANTES de llamar al servicio.
+  - Progreso en el `GET /api/games/:id`: el servicio añade `score` (aciertos acumulados) y `nextQuestionId` (pregunta de turno; `null` al terminar), calculados siempre en el servidor a partir de las respuestas guardadas, y Swagger documenta ambos campos.
+  - Tests propios de partidas en dos niveles: `games.routes.test.ts` (HTTP con supertest y el servicio simulado) y `game.services.test.ts` (lógica real del servicio contra un Prisma simulado en memoria).
+
+- **Conceptos y explicación propia:**
+  - **Reglas de negocio en el servidor:** el cliente solo envía `gameQuestionId` y `choiceId`; el backend decide si es correcta (`choice.position === solution`) y calcula la puntuación. El cliente nunca envía ni modifica puntos.
+  - **Datos públicos frente a internos:** `solution` es interno y nunca sale en respuestas; el GET se construye campo a campo para que sea imposible filtrarlo sin darnos cuenta.
+  - **ID de catálogo frente a ID de partida:** `questionId` es el original; `gameQuestionId` es la copia que vive dentro de la partida y es la que recibe el endpoint de respuestas.
+  - **Turno:** la pregunta en turno es la primera sin responder (posiciones 0..4), por eso se comprueba antes de guardar.
+  - **Tipo resultado:** `submitAnswer` devuelve `{ ok: true, ... }` o `{ ok: false, error }` en lugar de lanzar excepciones; el controlador ramifica con `if (!resultado.ok)` y una tabla error → HTTP.
+  - **Transacción de Prisma:** guardar la respuesta y cerrar la partida es "todo o nada".
+  - **Duplicados:** `@@unique([gameQuestionId])` impide dos respuestas para la misma pregunta; en el uso normal el turno la detecta antes (409 igualmente) y `P2002` es la defensa ante dos peticiones simultáneas (carrera).
+  - **`.strict()` de zod:** rechaza campos extra como `isCorrect` o `score`. Aunque los dejara pasar, el controlador solo lee los dos campos y la puntuación la calcula el servidor: defensa en profundidad.
+  - **404, 403 y 409 con significado:** 404 = el recurso no existe, 403 = existe y no es tuyo, 409 = el estado actual de la partida no permite esa acción (turno, duplicado o cerrada).
+  - **Swagger es un documento, la vista solo lo pinta:** cada bloque `@openapi` aporta una operación, el orden de los bloques es el orden en la vista y los cambios requieren reiniciar el servidor.
+  - **Validar el ID es validar una CADENA:** el parámetro de la URL llega como texto; `Number("1e100")` es 10^100 y `Number.isInteger(1e100)` da `true` (no tiene decimales), así que una comprobación débil lo deja pasar hasta que Prisma revienta con un identificador que no cabe en el campo `Int`. El regex `^\d+$` mata decimales y notación exponencial, y el rango `1..2147483647` mata el `0` y lo que no cabe en la base.
+  - **Reutilizar sin duplicar reglas:** `idParamSchema` es un alias de `questionIdSchema`; el mismo criterio de ID vale para preguntas y partidas sin copiar código ni romper los imports existentes.
+  - **El progreso se calcula, no se guarda:** `score` es contar respuestas con `isCorrect: true` (como máximo una por pregunta) y `nextQuestionId` es la primera pregunta sin respuestas; ambos se derivan en el servidor desde las respuestas ya guardadas, de modo que al recargar la partida el frontend reconstruye el estado sin fiarse de nada enviado por el cliente.
+  - **Dos niveles de test, dos mocks:** en `src/routes/` se simula el SERVICIO y se prueban el controlador, las validaciones y la tabla error → HTTP; en `src/services/` se simula PRISMA y se prueba la lógica real del servicio contra una BBDD falsa en memoria. El `it.each` de vitest permite cubrir muchas entradas inválidas sin repetir código.
+
+- **Pruebas y resultados:**
+  - `npm run typecheck` y `npm run build`: sin errores.
+  - `npm test`: **18 tests superados en 4 archivos** (la parte anterior sigue funcionando).
+  - `GET /api/games/1` con token: 200 con cinco preguntas sin repetición (posiciones 0..4), cuatro opciones cada una y sin `solution` en ninguna parte.
+  - `GET /api/games/1` sin token: 401. Con id 99999: 404. Con el token de un usuario ajeno: 403.
+  - `POST /api/games/1/answers` (7 pruebas manuales desde Swagger):
+    1. Acierto a la pregunta 1 → 200 `isCorrect: true, score: 1`.
+    2. Responder la pregunta 3 estando en la 1 → 409 `WRONG_TURN`.
+    3. Opción que pertenece a otra pregunta → 400 `CHOICE_NOT_IN_QUESTION`.
+    4. Repetir la pregunta 1 → 409 (no suma dos veces).
+    5. Enviar `isCorrect: true` en el body → 400 `VALIDATION_ERROR` (`.strict()`).
+    6. Quinta respuesta → 200 `finished: true, score: 5`.
+    7. Responder con la partida cerrada → 409 `GAME_FINISHED`.
+  - Swagger refleja el contrato: los tres endpoints de partidas documentados y probados desde `/docs`.
+  - **Revisión del tutor — matriz de validación de IDs (24/24 con un script de Node contra el servidor levantado):**
+    1. `GET /api/games/{id}` con `1e100`, `0`, `-5`, `1.5` y `2147483648` → 400 `VALIDATION_ERROR` (el `1e100` antes producía un 500 de Prisma).
+    2. `GET` con `99999` (válido pero inexistente) → 404 `GAME_NOT_FOUND`; con `1` → 200 (flujo válido intacto).
+    3. `POST /api/games/{id}/answers` con esos mismos ids en la URL → 400/404 sin llegar al servicio.
+    4. Body con `gameQuestionId` o `choiceId` a `0`, `-5`, `1.5`, `2147483648` y con campo extra `isCorrect` → 400 `VALIDATION_ERROR`.
+    5. `gameQuestionId: 99999` en una partida activa → 404 `QUESTION_NOT_IN_GAME`; respuesta válida → 200 (flujo conservado).
+  - `npm test` tras las mejoras: **55 tests en 6 archivos** (37 nuevos: 27 de rutas y 10 de servicios); `npm run typecheck` sin errores.
+  - Progreso en vivo: `GET /api/games/1` (terminada) → `score: 5, nextQuestionId: null`; `GET /api/games/3` (activa, una respuesta) → `score: 1, nextQuestionId: 12`.
+  - Swagger: `/api/openapi.json` refleja `score` y `nextQuestionId` (con `nullable: true`, estilo OpenAPI 3.0) dentro de `PartidaEstado`.
+
+- **Error y solución:**
+  - Al pegar el servicio, un typo en el tipo (`GAME_NOT_FOUN`) y la ausencia del `return` final produjeron los errores TS2820 y TS2366; corregidos los dos.
+  - TypeScript solo enseñó el error de sintaxis (una `}` de más al final del fichero) hasta que lo arreglé: los errores de sintaxis esconden los de tipos.
+  - Un `}` cerraba el `if` antes del `return`, con lo que la traducción de errores quedaba fuera del bloque; movido el cierre y corregido también el typo `messaje`.
+  - El IDE insertó solo `import { finished } from "stream"` al escribir `finished`; era un import inútil y se borró.
+  - Trampa silenciosa: `resultadoValidacion.succes` (sin la s) habría devuelto 400 en todas las peticiones porque `undefined` se negaba como `true`.
+  - El test de "campo prohibido" devolvió 200 en lugar de 400: el comentario decía "sin campos extra" pero faltaba la llamada `.strict()`; añadida y repetida la prueba con 400 correcto.
+  - Un token de Swagger caducó y daba 401 con "Falta el token": el curl no llevaba la cabecera `Authorization`; se resolvió volviendo a autorizar con un token nuevo.
+  - Corrección de errata: `FORBIDEN` → `FORBIDDEN` en el código de error 403 del `GET /api/games/:id`, igualándolo al del endpoint de respuestas.
+  - El revisor reproducía `GET /api/games/1e100` con un 500 de Prisma: la validación antigua (`Number.isInteger`) no limitaba el rango. Sustituida por `idParamSchema.safeParse(req.params)` en ambos controladores y añadido `.max(2147483647)` a los dos campos del body.
+  - La primera pasada de la matriz salió 22/24: al aplicar el `.max` al `choiceId` se le olvidó el `.min(1)`, y `0`/`-5` pasaban la validación y llegaban al servicio (409 en vez de 400). Detectado por las pruebas y corregido: los casos límite existen exactamente para esto.
+  - Swagger UI bloquea `1e100` en el formulario ("Value must be an integer") porque valida el contrato en el navegador; la prueba se mandó con curl. Además, PowerShell traga las comillas simples del body JSON (`INVALID_JSON`), así que la matriz completa se ejecutó con un script de Node que hizo las 24 peticiones de una vez.
+  - En la documentación de Swagger hubo dos erratas de pegado: el `required` nuevo se coló en el de cada opción de `choices` (en vez del de `PartidaEstado`) y la descripción del `400` ocupó el sitio de la descripción principal del GET; intercambiadas a su sitio.
+  - Al añadir los campos nuevos al `json` del controlador faltó un `)` en el `map` de preguntas (TS1135): el error de sintaxis apareció en la línea de DESPUÉS del sitio real del problema.
+
+- **Dudas:**
+  - **¿Por qué guardar una copia de las preguntas?** Porque `GameQuestion`/`GameChoice` son un snapshot: si mañana se edita o se borra una pregunta del catálogo, la partida en curso conserva su enunciado, sus opciones y su solución tal y como se jugaron.
+  - **¿Puede el cliente hacer trampa enviando puntuación?** No: el esquema `.strict()` rechaza los campos extra, el controlador solo pasa los dos ids y el servicio calcula `isCorrect` y `score`.
+  - **¿Responder dos veces suma dos puntos?** No: la segunda recibe 409 (el turno ya pasó) y, además, `@@unique([gameQuestionId])` lo impide a nivel de base de datos.
+  - **¿El rol ADMIN afecta a las partidas?** No: las rutas de juegos solo usan `authMiddleware`; el `adminMiddleware` está reservado para el CRUD de preguntas.
+  - **¿Qué pasa al completar la quinta?** La transacción cambia el estado a `FINISHED` y cualquier respuesta posterior recibe 409 `GAME_FINISHED`.
+  - **¿Por qué `score` no está guardado en ninguna tabla?** Porque hoy no hace falta: es el recuento de respuestas con `isCorrect: true` y recalcularlo desde la base garantiza que siempre coincide con la verdad; si algún día hubiera puntos parciales, se podría añadir un campo.
+  - **¿Y si el frontend recarga la página en mitad de la partida?** El `GET /api/games/:id` devuelve `score` y `nextQuestionId`, así que el cliente reconstruye el progreso sin adivinar nada, y sigue sin ver las soluciones de las preguntas pendientes.
+
+- **PR y correcciones:**
+  - Rama `reto/13-partida-individual` con todo el trabajo del reto; PR hacia `develop` sin hacer merge.
+  - Revisión del tutor sobre el commit `2262322`: una corrección necesaria (validación de IDs en URL y body, con el rango completo del `Int`) y dos mejoras propuestas (tests propios de partidas y `score`/`nextQuestionId` en el `GET`); las tres aplicadas en la misma rama y el mismo PR, dejándolo abierto para la siguiente revisión (sin empezar el reto 14).
 
 ## 14 · Consulta tu historial
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- **Lo que he construido:**
+  - `GET /api/me/games`: historial de partidas del usuario autenticado, de la más reciente a la más antigua (`orderBy: { createdAt: "desc" }`) y con `select` explícito de `id`, `status`, `createdAt`, `finishedAt`, `score` (sin credenciales ni soluciones).
+  - El usuario sale SIEMPRE de la sesión validada (`res.locals.userId` que deja `authMiddleware`), nunca de un `userId` del query o del body; el filtro `players: { some: { userId } }` limita la consulta a las partidas propias.
+  - Router nuevo `src/routes/me.routes.ts` montado en `app.ts` como `app.use("/api/me", meRouter)`, con la cadena `authMiddleware` → controlador (401 si falta el token).
+  - Detalle enriquecido en `GET /api/games/:id`: además de `id`, `status`, `score`, `nextQuestionId` y las preguntas con sus opciones, ahora devuelve `createdAt` y `finishedAt`, y cada pregunta lleva `answered` (true si ya tiene respuesta guardada).
+  - Prueba automatizada de acceso ajeno (bloque 3) con **Vitest + Supertest contra una base de datos PostgreSQL real** (`trivia_test`), separada de los tests con mocks.
+  - Infraestructura de pruebas de integración: `tests/integration/`, `vitest.integration.config.ts`, script `npm run test:integration` (con `--env-file=tests/.env.test`) y `.env.test` propio (en `.gitignore`).
+  - Documentación en `tests/README.md`: estructura de carpetas, qué prueba cada fichero y cómo montar y ejecutar la base de datos de pruebas.
+
+- **Conceptos y explicación propia:**
+  - **Filtrar en el backend, no en el frontend:** el historial se filtra por el `userId` de la sesión en la consulta a la base. Filtrar en el frontend no protege nada: los datos ya habrían viajado y cualquiera podría pedir los de otro cambiando el id.
+  - **`select` explícito frente a `include`:** con `select` declaramos exactamente qué columnas salen, así `passwordHash` no puede colarse. Es el mismo criterio que "nunca `res.json(game)`" del reto 13.
+  - **`answered` sin filtrar la solución:** el servicio trae las respuestas con `select: { isCorrect: true }`, así que sabemos SI está respondida (`answers.length > 0`) pero no qué se eligió. Suficiente para que el cliente marque lo hecho y continúe por `nextQuestionId`.
+  - **Ordenación y fechas:** `createdAt desc` da el historial en orden natural y `finishedAt: null` distingue las partidas en curso de las terminadas.
+  - **Tests con mocks frente a tests de integración:** los 56 tests normales simulan Prisma/servicios porque prueban el controlador y las validaciones; el test de acceso ajeno necesita la base REAL porque la regla que comprueba ("solo el participante") la aplica la consulta a la BBDD.
+  - **Base de datos separada:** las pruebas de integración crean y borran datos; por eso usan `trivia_test` en local y jamás la base de prácticas. El `.env.test` es distinto del `.env` y no se sube a Git.
+  - **`--env-file` (sin `if-exists`) en el script de integración:** si faltara el `.env.test`, Node falla en vez de caer al `.env` de desarrollo y escribir en la base equivocada.
+  - **Un test que vale es un test que falla cuando debe:** la prueba de acceso ajeno se validó eliminando temporalmente la comprobación de participante y viendo que se rompe.
+
+- **Pruebas y resultados:**
+  - `npm run typecheck` y `npm run build`: sin errores.
+  - `npm test`: **56 tests en 6 archivos** (los de mocks, sin tocar la base de datos).
+  - `npm run test:integration`: **3 tests en 1 archivo** contra `trivia_test`.
+  - Pruebas manuales con la app levantada (contra `trivia_test`, con curl):
+    1. Dos usuarios registrados y logueados; A crea una partida → 201 `ACTIVE`.
+    2. `GET /api/me/games` de A → 200 con **1** partida; el de B → 200 con **0** (historiales separados).
+    3. B pide la partida de A → **403**; A pide la suya → 200.
+    4. El historial solo trae `id, status, createdAt, finishedAt, score`; el detalle no trae `solution` ni `passwordHash`, y sí `answered`.
+    5. **Reinicio del backend**: se para el servidor, se vuelve a arrancar y la partida sigue accesible con el mismo token → 200 (`score`, `nextQuestionId` intactos).
+    6. **Continuar la partida**: responder la pregunta de turno → 200 `isCorrect: true, score: 1`; el `GET` pasa de `score 0 / nextQuestionId 6` a `score 1 / nextQuestionId 7`.
+  - Pruebas de seguridad (12 comprobaciones con curl contra el servidor):
+    1. Sin token → 401; token inválido → 401.
+    2. Token firmado con **otro secreto** → 401 `INVALID_TOKEN`; token con algoritmo **`none`** → 401 `INVALID_TOKEN`.
+    3. `GET` de partida ajena → 403 y `POST .../answers` en partida ajena → 403.
+    4. IDs maliciosos (`-1`, `abc`, `99999999999999999999`, `1.5`, `0`) → 400 en todos los casos (ningún 500).
+    5. Registro enviando `"role":"ADMIN"` → 400 (el `.strict()` de zod lo rechaza).
+    6. Ninguna respuesta contiene `passwordHash`, `password` ni `solution`.
+  - Comprobación de que el test sirve: al comentar el `if (!esParticipante)` del controlador, **la prueba de integración falla** (`expected 200 to be 403`); restaurado el código, vuelve a pasar.
+
+- **Error y solución:**
+  - Al mover los tests de `src/` a `tests/` no bastó con cambiar los `import`: los `vi.mock("../...")` también llevan ruta relativa, y si no coincide con la del import el mock no se aplica (`vi.mocked(...).mockResolvedValue is not a function`). Corregidas todas las rutas de `vi.mock` a `../../src/...`.
+  - Un test de rutas comparaba la respuesta del detalle con `toEqual` (exacta) y se rompió al añadir `createdAt`/`finishedAt`/`answered`: era el propio test avisando de que el contrato cambió. Se actualizó la expectativa (no se debilitó) y se añadió un caso con pregunta pendiente (`answered: false`).
+  - `vitest.config.ts` tenía `include: ["tests/**/*.test.ts"]`, que arrastraba también los tests de integración: `npm test` tardaba 8s y se conectaba a la base de datos. Solucionado excluyendo `tests/integration/**`; cada comando hace solo lo suyo.
+  - Al probar con curl desde PowerShell, el body JSON llegaba mal y la API devolvía `INVALID_JSON`: las comillas simples de PowerShell no se transmiten bien a `curl.exe`. Se resolvió escribiendo el cuerpo en un fichero y usando `--data-binary "@fichero.json"`.
+  - En Windows `psql` no está en el PATH (`CommandNotFoundException`); hubo que usar la ruta completa `"C:\Program Files\PostgreSQL\18\bin\psql.exe"`, y queda anotado en el README.
+
+- **Dudas:**
+  - **¿Por qué el historial no puede llevar un `userId` en la URL?** Porque sería trivial pedir el de otro cambiando el número. El id sale de la sesión validada, que es la única fuente de verdad.
+  - **¿Por qué no guardar `score` en la tabla `Game`?** Porque es el recuento de respuestas correctas y recalcularlo desde la base garantiza que siempre coincide; si se guardara, podría desincronizarse.
+  - **¿Qué diferencia hay entre `answered` y `nextQuestionId`?** `nextQuestionId` es la primera pregunta sin responder (la de turno); `answered` dice, pregunta a pregunta, cuáles ya están hechas, para que el cliente pueda pintar el progreso.
+  - **¿Por qué el test de integración no puede usar mocks?** Porque lo que comprueba es que la consulta real a la base respeta el participante; con mocks estaría comprobando mi propia simulación, no el comportamiento del sistema.
+  - **¿Por qué no se usa la base de prácticas para las pruebas?** Porque las pruebas crean y borran datos; hacerlo sobre la base real las ensuciaría y podría borrar información de la entrega.
+
+- **PR y correcciones:**
+  - Rama `reto/14-historial`; PR hacia `develop` sin hacer merge.
+  - La rama incluye, además del reto, la refactorización progresiva autorizada por el tutor (middlewares, schemas OpenAPI por grupos, tipos de partidas, controladores y servicios por ficheros con barrels, y tests movidos a `tests/`), hecha paso a paso con verificación entre pasos.
 
 ## 15 · Prepara las consultas del frontend
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- **Lo que he construido:**
+  - Paginación de `GET /api/questions` con `page` (por defecto 1) y `pageSize` (por defecto 10, máximo 50), devolviendo `{ items, total, page, pageSize }`.
+  - Filtros de búsqueda por texto (`search`, insensible a mayúsculas en el enunciado) y por categoría (`categoryId`) en el listado de preguntas; el mismo filtro se aplica en `items` y en `total`.
+  - Orden estable con `id` como desempate (`orderBy: { id: "asc" }`).
+  - Paginación de `GET /api/me/games` con los mismos parámetros y metadatos.
+  - Configuración de CORS con `cors`, usando `FRONTEND_ORIGIN` y `credentials: true` (incluido preflight de `Authorization`).
+  - Esquema reutilizable `paginationQuerySchema` (Zod) con `coerce` para validar query params.
+  - Validación de `FRONTEND_ORIGIN` al arranque en `server.ts`.
+
+- **Conceptos y explicación propia:**
+  - **Paginación en la base, no en JS:** uso `skip`/`take` de Prisma para no cargar todas las filas. El hint del reto: no paginar en memoria.
+  - **Mismo `where` en `findMany` y `count`:** así `total` refleja los filtros aplicados a `items`.
+  - **Orden estable:** sin `orderBy` fijo, las filas pueden cambiar de página entre consultas. Uso `id` como desempate.
+  - **`coerce` en Zod:** los query params llegan como string; `z.coerce.number()` los convierte antes de validar. Si no es número, devuelve 400.
+  - **CORS:** el navegador bloquea peticiones cross-origin salvo que el servidor lo permita. `origin` define quién puede llamar; `credentials: true` permite enviar el header `Authorization`. CORS no sustituye a JWT: no bloquea clientes como curl, solo navegadores.
+  - **Preflight:** para peticiones con `Authorization`, el navegador envía `OPTIONS` primero; `cors` lo responde automáticamente.
+
+- **Pruebas y resultados:**
+  - `curl GET /api/questions?page=0` → 400 `VALIDATION_ERROR`.
+  - `curl GET /api/questions?page=uno` → 400 `VALIDATION_ERROR`.
+  - `curl GET /api/questions?pageSize=51` → 400 `VALIDATION_ERROR`.
+  - `curl GET /api/questions?page=999&pageSize=10` → 200 `{ items: [], total: 6, page: 999, pageSize: 10 }`.
+  - `curl GET /api/me/games?page=1&pageSize=5` con Bearer token → 200 `{ items: [], total: 0, page: 1, pageSize: 5 }`.
+  - Preflight CORS responde con `Access-Control-Allow-Origin` y `Access-Control-Allow-Credentials: true`.
+  - `npm run typecheck` → sin errores.
+  - `npm run build` → sin errores.
+
+- **Error y solución:**
+  - Al principio `getQuestions` recibía parámetros sueltos y `search`/`categoryId` eran opcionales mal tipados; se unificaron en un objeto `params` con tipos correctos.
+  - `getMyGames` devolvía un array; se cambió a `{ items, total, page, pageSize }` y se actualizó el controlador.
+  - El middleware CORS se colocó después de `/health` pero antes de las rutas `/api/*`, así se aplica a todas las rutas de la API.
+  - Ajuste posterior: `search` vacío se ignora (no filtra) y `page` se acota a máximo 1000 para evitar skips enormes.
+  - Actualizados esquemas y parámetros de Swagger para la respuesta paginada de preguntas e historial.
+  - Correcciones del tutor: CORS movido antes de express.json(); test de integración adaptado a items/total/page/pageSize; categoryId acotado a 2147483647; Swagger documenta 400 y límites; añadidos tests de paginación/filtros y de CORS (JSON malformado + preflight + cuerpo demasiado grande + categoryId fuera de rango). Setup de Vitest fija FRONTEND_ORIGIN para reproducibilidad.
+
+- **Dudas:**
+  - Corregido: `search` vacío se ignora (no filtra). `page` acotado a máximo 1000.
+
+- **PR y correcciones:**
+  - Rama `reto/15-filtros-paginacion-cors` hacia `develop`, sin merge.
+  - `npm run typecheck` y `npm run build` en verde.
 
 ## 16 · Crea una partida para dos
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- **Lo que he construido:**
+  - Migración con `GameMode` (INDIVIDUAL/MULTIPLAYER), estado `WAITING` en `GameStatus`, campos `mode` y `code` (único, nullable) en `Game`, e `isCreator` en `GamePlayer`.
+  - `POST /api/games` con `mode: "MULTIPLAYER"` crea una partida en estado `WAITING` con un código de invitación de 6 caracteres (único).
+  - `POST /api/games/join` recibe un código y añade al participante (máximo 2, de forma atómica para evitar carreras).
+  - `POST /api/games/:id/start` inicia la partida (solo el creador, con 2 jugadores): asigna 5 preguntas compartidas, pasa a `ACTIVE`.
+  - Swagger documenta las nuevas rutas y el campo `mode`/`code`.
+  - Validaciones: código desconocido → 404; sala llena → 409; ya iniciada → 409; no creador → 403; solo un jugador → 400; usuario ajeno → 403.
+
+- **Conceptos y explicación propia:**
+  - **Modo individual vs multijugador:** el campo `mode` distingue ambas; por defecto `INDIVIDUAL` para no romper el reto 13.
+  - **Código de invitación:** no sustituye a JWT; solo permite entrar a la sala. La autenticación sigue siendo obligatoria.
+  - **Unicidad por partida y usuario:** `@@unique([gameId, userId])` evita duplicados.
+  - **Atomicidad en join:** transacción que cuenta y crea en el mismo bloque, para que dos peticiones simultáneas no superen 2 jugadores.
+  - **Creador:** `isCreator` en `GamePlayer` marca quién puede iniciar.
+  - **Preguntas compartidas:** se congelan al iniciar, igual que en individual (snapshot).
+  - **Estado WAITING:** la partida no tiene preguntas hasta que se inicia.
+
+- **Pruebas y resultados:**
+  - Crear sala → 201 `{ id, status: "WAITING", code }`.
+  - Unirse con código válido → 200 `{ id, status: "WAITING" }`.
+  - Iniciar (creador, 2 jugadores) → 200 `{ id, status: "ACTIVE" }` con 5 preguntas compartidas.
+  - GET por ambos participantes → 200 con el mismo estado.
+  - Código desconocido → 404 `GAME_NOT_FOUND`.
+  - Tercer jugador → 409 `GAME_FINISHED` (sala llena).
+  - No creador inicia → 403 `FORBIDDEN`.
+  - Solo un jugador inicia → 400 `VALIDATION_ERROR`.
+  - Usuario ajeno consulta → 403 `NOT_PARTICIPANT`.
+  - `npm run typecheck` y `npm run build` → sin errores.
+  - `npm test` → 81 tests superados (11 archivos, con mocks y sin BBDD).
+  - `npm run test:integration` → 12 tests superados (3 archivos, contra `trivia_test`).
+  - Pruebas de concurrencia real contra BD local (`tests/integration/game.mutation.concurrency.test.ts`): 3 tests superados — entrada repetida del creador idempotente, dos usuarios nuevos compitiendo por la última plaza (solo uno entra, el otro recibe `SALA_LLENA`) y dos `startGame` simultáneos (uno inicia, el otro recibe `PARTIDA_YA_INICIADA`). Se ejecutan solo con `npm run test:integration` y pasan por `asegurarBaseDePruebas` antes de crear o borrar.
+
+- **Error y solución:**
+  - Typo `stauus` → `status` en `game.create.ts` (corregido).
+  - `res.locals.userid` → `res.locals.userId` (mayúscula) en `game.start.ts` (corregido).
+  - `startGame` devolvía `game` con status stale (WAITING) tras actualizar a ACTIVE; corregido devolviendo `{ ...game, status: "ACTIVE" }`.
+  - Transacción de `joinGame` ahora usa `isolationLevel: 'Serializable'` para evitar que dos peticiones simultáneas superen los 2 jugadores.
+  - `startGame` lanzaba `new Error("GAME_ALREADY_STARTED")` dentro de la transacción cuando la partida ya había pasado a ACTIVE, pero el `catch` no lo manejaba y llegaba al `throw error` final; corregido a `new Error("PARTIDA_YA_INICIADA")` para que el `catch` existente lo convierta en `{ ok: false, error: "PARTIDA_YA_INICIADA" }`.
+  - En el test de concurrencia, `game.code` tipa como `string | null` porque el campo `code` del modelo `Game` es `String?` (nullable) en Prisma; corregido con `codigo = game.code!` (seguro porque `createMultiplayerGame` siempre genera el código).
+  - Correcciones del tutor: validación de entradas con Zod (mode, code, idParamSchema); inicio atómico con updateMany condicionado; errores tipados (SALA_LLENA, PARTIDA_YA_INICIADA en catálogo); manejo de errores conocidos vs inesperados; as any eliminados de los controladores. Test de multijugador añadido (8 tests).
+
+- **Dudas:**
+  - Ninguna pendiente.
+
+- **PR y correcciones:**
+  - Rama `reto/16-sala-dos-jugadores` hacia `develop`, sin merge.
+
+- **Corrección posterior: confirmación y eliminación segura de salas** (ampliación del reto 16)
+  - Cada `GamePlayer` tiene `isReady` para guardar si confirmó que está preparado.
+  - `POST /api/games/:id/start` permite que los dos participantes confirmen: el primero mantiene `WAITING` y `started: false`; el segundo inicia `ACTIVE` con `started: true` y crea las preguntas.
+  - `GET /api/games/:id` expone `players[].isReady` para reconstruir la pantalla de espera.
+  - `DELETE /api/games/:id` solo permite al creador eliminar una sala `MULTIPLAYER` en `WAITING`.
+  - El borrado usa `deleteMany` con condiciones de id, mode, status y creador para evitar borrar una partida que haya pasado a `ACTIVE`.
+  - Pruebas ejecutadas: `npm.cmd run typecheck`, `npm.cmd run build`, `npm.cmd test -- tests/services/game.ready.test.ts` (6 correctas) y `npm.cmd test -- tests/services/game.delete.test.ts` (1 correcta).
+  - Esta es una ampliación del reto 16; no sustituye la entrega ni el frontend del reto 20.
 
 ## 17 · Juega por turnos mediante HTTP
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- **Lo que he construido:**
+  - Migración `20261026120000_reto17_turnos_concurrencia` con el estado del turno en `Game` (`currentPosition`, `currentTurnOrder`, `turnVersion`, `winnerUserId`), el turno y la puntuación persistida en `GamePlayer` (`turnOrder`, `score`) y el autor de cada respuesta en `Answer` (`userId`).
+  - La unicidad de respuestas pasa de `[gameQuestionId]` a `[gameQuestionId, userId]`: cada jugador puede responder una vez cada pregunta, pero la misma pregunta admite dos respuestas (una por jugador).
+  - Restricción única `[gameId, turnOrder]` para que dos jugadores no puedan ocupar el mismo turno.
+  - Migración de datos existentes: se asigna el turno 1 al creador, se rellenan puntuaciones y posiciones de partidas antiguas y se aborta si hay respuestas sin jugador asignable (no se borran datos en silencio).
+  - `submitAnswer` implementa la máquina de estados: por cada pregunta responde primero el jugador 1 y después el 2; solo al responder el 2 se avanza `currentPosition`. Con 10 respuestas (5 preguntas × 2 jugadores) la partida pasa a `FINISHED` y se calcula ganador o empate.
+  - Transacción atómica que comprueba estado, participante, turno, pregunta, duplicado y opción, y guarda en el mismo bloque la respuesta, el avance del turno, la puntuación y el cierre de la partida.
+  - Control de concurrencia optimista: `updateMany` condicionado por `turnVersion`, `currentPosition` y `currentTurnOrder`. Si otra petición se adelantó, actualiza 0 filas y se reintenta leyendo el estado nuevo (máximo 3 intentos; también se reintenta ante `P2034` de PostgreSQL).
+  - La restricción única `[gameQuestionId, userId]` actúa como última defensa: si dos peticiones del mismo jugador llegan a la vez, una recibe `ALREADY_ANSWERED` y no suma puntos.
+  - Respuesta HTTP de multijugador: la primera respuesta de la ronda devuelve solo `roundComplete: false`, `finished` y `nextTurn`; no incluye `isCorrect`, `score`, `results` ni `players`. La segunda revela `results`, `players`, `winnerUserId` e `isDraw`.
+  - `GET /api/games/:id` devuelve `currentTurn`, `answeredCount`, `revealed` y los resultados/puntuaciones solo de las rondas ya cerradas. Nunca incluye `solution` ni las opciones correctas.
+  - El modo individual conserva el contrato anterior (`isCorrect`, `score`, `finished`) para no romper el reto 13.
+  - Errores documentados: `WRONG_TURN` (409, fuera de turno o pregunta distinta), `ALREADY_ANSWERED` (409, duplicado), `GAME_NOT_ACTIVE` (409, sala aún en `WAITING`), `QUESTION_NOT_IN_GAME` (404), `NOT_PARTICIPANT` (403) y `CONFLICTO_CONCURRENCIA` (409, reintentos agotados).
+  - Swagger actualizado con los nuevos campos, el contrato de turnos y la ocultación de resultados.
+
+- **Conceptos y explicación propia:**
+  - **Turno alterno:** no basta con guardar las respuestas: hace falta un estado explícito (`currentPosition` + `currentTurnOrder`) que diga qué pregunta y qué jugador toca. Así el servidor decide el orden, no el frontend.
+  - **Atomicidad:** respuesta, turno, puntuación y cierre deben escribirse juntos. Si se guardara la respuesta y fallara el avance del turno, la partida quedaría a medio actualizar.
+  - **Concurrencia optimista:** en vez de bloquear la fila durante toda la petición, se lee una versión (`turnVersion`) y se actualiza solo si nadie la cambió. Si cambió, no se escribe nada y se reintenta. Es más barato que un bloqueo pesimista y suficiente para turnos.
+  - **Aislamiento Serializable + reintentos:** PostgreSQL puede abortar una transacción simultánea con `P2034`; el servicio la reintenta con el estado actualizado. La transacción sola no basta si dos peticiones leyeron el mismo turno.
+  - **Restricciones únicas:** son la garantía final en la base de datos, incluso si la lógica de aplicación tuviera una carrera. `[gameQuestionId, userId]` impide duplicar la respuesta de un jugador y `[gameId, turnOrder]` impide duplicar turnos.
+  - **Ocultar información:** mientras falta el segundo jugador, el primero no debe saber si acertó. Por eso no se devuelve `isCorrect` ni se suma su punto a la puntuación pública hasta cerrar la ronda.
+  - **Duplicado vs partida terminada:** un reintento de la última respuesta debe responder `ALREADY_ANSWERED`, no `GAME_FINISHED`; por eso la comprobación de duplicado va antes que la de estado final.
+  - **Puntuación persistida:** `GamePlayer.score` guarda los aciertos acumulados. La puntuación que se publica en multijugador se calcula solo con rondas reveladas para no filtrar el resultado pendiente.
+
+- **Pruebas y resultados:**
+  - `npm test` → 93 tests superados (11 archivos, con mocks y sin BBDD).
+  - `npm run test:integration` → 19 tests superados (4 archivos, contra `trivia_test`).
+  - `npm run typecheck` → sin errores.
+  - `npm run build` → sin errores.
+  - Nuevas pruebas unitarias (`tests/services/game.services.test.ts`): el jugador 1 responde primero sin revelar su acierto; el jugador 2 no puede adelantarse; al responder el 2 se revelan ambos resultados y se avanza; duplicado en memoria y duplicado `P2002`; conflicto de versión con reintento; 10 respuestas cierran con ganador; empate con `winnerUserId: null` e `isDraw: true`; `getGameById` oculta el resultado pendiente.
+  - Nuevas pruebas HTTP (`tests/routes/games.multiplayer.test.ts`): la primera respuesta de la ronda no incluye `isCorrect`, `score`, `results` ni `players`; la segunda los revela; el GET devuelve turno y puntuaciones reveladas sin soluciones.
+  - Nuevas pruebas de integración reales (`tests/integration/game.turns.concurrency.test.ts`): solo responde el jugador del turno y el acierto se oculta hasta el segundo; una petición ajena no puede responder; dos respuestas simultáneas del mismo jugador no duplican puntos; dos jugadores simultáneos dejan la partida coherente sin saltarse turnos; 10 respuestas cierran con ganador y no aceptan más; empate correcto; regresión del modo individual con 5 respuestas.
+  - Prueba manual: turno válido → 200 con `nextTurn`; turno inválido → 409 `WRONG_TURN`; duplicado → 409 `ALREADY_ANSWERED`; dos peticiones simultáneas → una aceptada y otra rechazada/reintentada sin duplicar puntos.
+
+- **Error y solución:**
+  - La base local `trivia_test` había quedado parcialmente modificada por un intento anterior de la migración. Se marcó como `rolled-back` con `prisma migrate resolve` y se hizo la migración idempotente (`ADD COLUMN IF NOT EXISTS`, `CREATE UNIQUE INDEX IF NOT EXISTS`, FK comprobada antes de crearla), sin borrar ni resetear la base.
+  - El primer enfoque leía el estado fuera de la transacción y usaba `isCreator` para decidir el turno; dos lecturas simultáneas podían ver el mismo turno. Se sustituyó por `turnOrder` explícito y control de versión dentro de la transacción.
+  - Al cerrar la última ronda, comprobar `GAME_FINISHED` antes que el duplicado devolvía el error equivocado al reintentar la última respuesta; se invirtió el orden y ahora es `ALREADY_ANSWERED`.
+  - `turnVersion` empieza en 0 y `startGame` lo incrementa a 1; tras una respuesta queda en 2 y tras dos en 3. Se usó como valor esperado en el `WHERE`, no como contador de respuestas.
+  - En multijugador no se podía reutilizar la respuesta individual con `isCorrect`/`score`: se separó el resultado en una unión discriminada (`INDIVIDUAL`/`MULTIPLAYER`) y se actualizó el controlador para no filtrar campos en la primera respuesta.
+  - El `GET` calculaba la puntuación sumando todas las respuestas, lo que revelaba el acierto del primero; ahora solo cuenta rondas con las dos respuestas (o la partida terminada).
+
+- **Dudas:**
+  - Pendiente de la revisión del tutor para validar el enfoque de concurrencia optimista frente a un bloqueo pesimista.
+
+- **PR y correcciones:**
+  - Rama `reto/17-turnos-concurrencia` hacia `develop`, sin merge hasta la aprobación del tutor.
+  - `npm run typecheck`, `npm run build`, `npm test` y `npm run test:integration` en verde.
 
 ## 18 · Añade avisos en tiempo real
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- **Lo que he construido:**
+  - He conectado **Socket.IO** al mismo servidor HTTP que Express (`src/server.ts` importa `./sockets/index.js`), con la misma configuración de CORS que la API REST.
+  - He creado `src/sockets/index.ts` con un middleware de autenticación en el *handshake* que acepta el token por `auth.token` o `query.token`, lo verifica con `JWT_SECRET`, rechaza token ausente, inválido o caducado y guarda `socket.data.userId`.
+  - He implementado el evento `join:game`: comprueba en base de datos que el usuario sea `GamePlayer` de esa partida (**conocer el ID no basta**), solo entonces lo une a la sala `game:${gameId}` y responde con `joined:game`. Si no participa, emite `error:game` y no lo une a la sala.
+  - He emitido `game:updated` desde los controladores tras confirmar la operación HTTP: en `game.join.ts` (al unirse), en `game.start.ts` (al iniciar) y en `game.answer.ts` (al responder, incluyendo cuando la partida pasa a `FINISHED`). El payload solo contiene datos públicos: `id`, `status` y `turnVersion`.
+  - He creado `docs/eventos.md` documentando la conexión, autenticación, eventos cliente-servidor, eventos servidor-cliente, errores y dejando claro que el cliente debe volver a consultar `GET /api/games/:id` tras recibir el aviso.
+  - Las emisiones solo se realizan tras el *commit* de la operación HTTP. Si la operación falla, **nunca** se emite `game:updated`. 
 
+- **Conceptos y explicación propia:**
+  - **WebSocket vs HTTP:** Las acciones siguen pasando por la API REST. Socket.IO solo se utiliza para avisar en tiempo real de que el estado ha cambiado.
+  - **Salas (`rooms`):** He utilizado `io.to(\`game:${gameId}\`)` para enviar el evento únicamente a los sockets que se hayan unido correctamente a esa sala, evitando enviar información a usuarios ajenos.
+  - **Autenticación en handshake:** Se valida el JWT al conectar, no en cada evento. Si el token caduca durante la conexión, el socket ya autenticado se mantiene conectado (para reforzarlo se debería renovar sesión reconectando).
+  - **Emitir tras confirmar:** Siempre emito después de que el servicio haya confirmado la operación en base de datos. Esto evita avisar de cambios que nunca se han guardado.
+  - **Fuente de verdad:** El socket **no** es la fuente de verdad. Únicamente avisa del cambio y el cliente debe volver a consultar el estado completo con `GET /api/games/:id`. Nunca se envían soluciones, opciones correctas ni respuestas internas.
+  - **Autorización por pertenencia:** La autorización para recibir eventos se hace comprobando `GamePlayer`, no con el hecho de conocer el `gameId`. 
+
+- **Pruebas y resultados:**
+  - `npm run typecheck` → correcto.
+  - `npm run build` → correcto.
+  - **Prueba con dos navegadores:** He conectado dos usuarios distintos (Chrome normal y modo incógnito) desde `http://localhost:3000/health` con sus respectivos tokens JWT.
+  - **Conexión y unión:** Ambos se han conectado correctamente y al hacer `join:game` han recibido `joined:game` sin errores. Un usuario ajeno no ha podido unirse.
+  - **Inicio de partida:** Al lanzar `POST /api/games/14/start` con el token del creador, **ambos clientes han recibido `game:updated` al mismo tiempo sin recargar las pestañas** (`[USER1] GAME_UPDATED` y `[USER2] GAME_UPDATED` con `{ id: 14, status: 'WAITING', turnVersion: 0 }`).
+  - **Estado real verificado:** Tras el `start`, `GET /api/games/14` confirmaba que la partida pasaba correctamente a `ACTIVE`, con los dos jugadores, 5 preguntas congeladas y turno asignado.
+  - **Sin emisión en fallo:** Si la operación HTTP falla, no se emite ningún `game:updated`.
+
+- **Error y solución:**
+  - **Sockets no se inicializaban:** Olvidé añadir `import "./sockets/index.js";` en `src/server.ts`. Lo solucioné importándolo justo después de crear el servidor HTTP para que se ejecuten los `io.use()` e `io.on()`.
+  - **Typos en el evento:** Tuve `game:updatet` en `game.join.ts` y `game${gameState.id}` (sin `:`) en `game.answer.ts`. Corregidos ambos para usar `game:updated` y la sala correcta `game:${gameState.id}`.
+  - **Normalización de `gameId`:** En `src/sockets/index.ts` normalicé `gameId` a `Number(gameId)` con validación (`Number.isInteger` y mayor a 0), usándolo en la consulta, en `socket.join` y en `joined:game`.
+  - **CORS con navegador:** Al abrir la consola desde `about:blank` el origen era `null`. Lo solucioné abriendo las pestañas desde `http://localhost:3000/health` y usando **Snippets** para saltarme el aviso de seguridad de Chrome.
+  - **Tokens incorrectos:** Al principio conecté los sockets con tokens equivocados. Lo solucioné comprobando con `GET /api/me` el `userId` de cada token y comparándolo con `players` de la partida con `GET /api/games/{id}`, usando siempre el token del usuario que participa en esa partida.
+
+- **Dudas:**
+  - **¿Qué pasa si el token caduca durante la conexión?** Queda documentado: la validación solo ocurre en el handshake, por lo que el socket se mantiene conectado. Para renovar la sesión sería necesario desconectarse y volver a conectar con un token válido.
+
+- **Mejoras opcionales aplicadas (reto 18):**
+  - Tipado de Socket.IO en `src/sockets/socket.types.ts` (`AppServer`, `AppSocket`, `SocketData`, eventos cliente/servidor) y uso en `src/sockets/index.ts`.
+  - Pruebas de integración real en `tests/sockets/socket.integration.test.ts`: conexión sin token rechazada, token válido aceptado, usuario ajeno no se une, dos participantes reciben `game:updated`, expiración del token.
+- **Correcciones del tutor (reto 18):**
+  - `npm run typecheck` y `npm test` (98/98) en verde.
+  - Caducidad durante la conexión: el servidor valida `exp` en el handshake y programa `setTimeout(() => socket.disconnect(true), remainingMs)`; libera el temporizador con `clearTimeout` en `disconnect`.
+  - Validación JWT alineada con HTTP: `jwt.verify` con `{ algorithms: ["HS256"] }`, `exp` obligatorio y finito, `sub` numérico seguro (1..2147483647), comprobación de usuario en `prisma.user.findUnique` y pertenencia en `join:game` con `GamePlayer`.
+  - Estado confirmado en start: `startGame` lee `prisma.game.findUnique` tras el commit y devuelve ese estado; el controlador emite `game:updated` solo si la operación es OK.
+  - Documentación actualizada en `docs/eventos.md` (caducidad, reconexión con token válido y liberación del temporizador).
+
+
+- **PR y correcciones:**
+  - Rama `reto/18-socket-io` con todos los cambios aplicados.
+  - `npm run typecheck` y `npm run build` en verde.
+  - Prueba con dos clientes exitosa: `game:updated` recibido por ambos sin recargar al iniciar la partida.
+  - Pendiente de actualizar `APRENDIZAJE.md` (realizado), hacer commit/push y abrir PR hacia `develop` sin hacer merge.
+  - 
 ## 19 · Recupera una partida al reconectar
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
+- Lo que he construido: Implementé la recuperación de estado y validación al reconectar en el servidor Socket.IO. Los cambios incluyen:
+  - Agregué la propiedad `lastGameId` al interfaz `SocketData` en `src/sockets/socket.types.ts` para guardar el ID de la partida al unirse.
+  - En `src/sockets/index.ts`, al ejecutar `join:game`, el servidor guarda `socket.data.lastGameId = gid`.
+  - Agregué un listener al evento `reconnect` que recupera el `lastGameId` almacenado, verifica en la base de datos (`prisma.gamePlayer.findFirst`) si el usuario sigue siendo participante de esa partida, y si la validación pasa, emite el estado actual de la partida (`game:state`). Si el usuario ya no participa, desconecta y muestra error: *"Tu sesión ha expirado o ya no participas en esta partida"*.
+  - Las pruebas manuales `tests/reconnect/reconnect.manual.test.ts` validan la desconexión y reconexión básica (2/2 tests passing).
+
+- Conceptos y explicación propia:
+  - **Socket.IO rooms**: Cada partida es una sala (`game:${gid}`) a la que los usuarios se unen con `socket.join()`. El evento `io.to("game:${gid}").emit()` alcanza a todos los clientes en esa sala.
+  - **Validación al reconectar**: Cuando un usuario se desconecta y vuelve a conectar, el servidor debe re-validar que el token JWT sigue siendo válido y que el usuario sigue siendo participante de la partida en la BD, ya que el token podría haber expirado durante la partida.
+  - **socket.data.lastGameId**: Almacenar el ID de la partida en los datos del socket permite recuperarlo fácilmente en el evento `reconnect` sin necesidad de enviar el gameId desde el cliente.
+  - **Prisma gamePlayer**: La validación `prisma.gamePlayer.findFirst({ where: { gameId, userId } })` asegura que solo los usuarios inscritos en una partida puedan unirse o reconectarse.
+
+- Pruebas y resultados:
+  - `npm test -- tests/reconnect/reconnect.manual.test.ts`: **2/2 tests passing** para el Reto 19.
+  - Suite general: **99/100 tests passing** a nivel global (el 1 test restante es un timeout preexistente en integración de Socket.IO que ya fue solucionado en el test "dos participantes recibe game:updated").
+  - TypeScript compilation: **sin errores** (`tsc --noEmit`).
+
+- Error y solución:
+  - **Problem**: El test de integración "dos participantes reciben game:updated" hacía timeout (5000ms) porque el mock de Prisma `mockResolvedValue({ gameId: 1, userId: 1 })` estaba hardcodeado solo para userId:1, pero el test usaba dos sockets con userIds diferentes (1 y 2).
+  - **Solution**: Cambié el mock a `mockImplementation(({ userId, gameId }) => { return { gameId: gameId, userId } as never; })` para que dinámicamente retorne el userId que solicita la llamada, permitiendo que ambos sockets funcionen correctamente con sus respectivos userIds.
+  - **Additional fix**: También actualicé el test para que ambos sockets tuvieran userIds distintos (`tokenDe(1)` para s1 y `tokenDe(2)` para s2), que es el escenario real de uso.
+
+- Dudas:
+  - Dudas sobre la diferencia entre `io.emit()` vs `socket.emit()` vs `io.to().emit()` en Socket.IO y cuándo usar cada uno para broadcasting a salas específicas.
+  - Consultar con el tutor sobre la mejor forma de manejar la expiración de tokens en tiempo real vs validación en cada reconexión.
 - PR y correcciones: pendiente.
 
 ## 20 · Conecta un frontend mínimo
@@ -300,6 +856,22 @@ En cada reto anota:
 - Error y solución: pendiente.
 - Dudas: pendiente.
 - PR y correcciones: pendiente.
+
+## 20B · Dale claridad a la experiencia de juego
+
+- Lo que he construido (backend): añadí `displayName` al usuario, obligatorio en el registro (2–30 caracteres tras recortar espacios), y el perfil autenticado `GET/PATCH /api/me`. El `PATCH` solo acepta el nombre propio; no permite cambiar ID, rol, email ni puntuación.
+- Mejora opcional: extraje `displayNameSchema` en `src/schemas/display-name.schema.ts`. Registro y edición de perfil lo reutilizan, por lo que el recorte de espacios, la longitud y los mensajes de validación se mantienen en un único lugar.
+- Contratos: login, perfil, detalle de partida e historial devuelven nombres públicos. En multijugador, participantes incluyen `userId`, `displayName`, `turnOrder`, `isCreator`, `isReady` y puntuación pública. El detalle y el historial incluyen `winnerUserId` e `isDraw` para que el frontend presente victoria, derrota o empate sin calcularlo. Para partidas históricas sin `winnerUserId`, ambos contratos usan la misma puntuación revelada para recuperar el ganador; un valor nulo solo significa empate si los puntos empatan.
+- Migración: `20261102103820_add_user_display_name` agrega primero una columna opcional, asigna `Jugador <id>` a cuentas existentes y después la hace obligatoria; así conserva usuarios y sus relaciones. El 03/11/2026 ensayé la migración con Prisma en la base local aislada `trivia_test_legacy_20b`, partiendo del esquema anterior y de una fixture con usuario Argon2, partida, participante, respuesta correcta y puntuación. Después de migrar, el usuario inició sesión, recibió `Jugador 1`, cambió su nombre y conservó ID, partida, relaciones, respuesta y puntuación.
+- Privacidad y puntuación: no se exponen emails ni hashes del rival. La puntuación del primer jugador permanece oculta mientras la ronda está pendiente; al responder ambos se publica la ronda cerrada.
+- Sala eliminada: después de que `DELETE /api/games/:id` confirme el borrado de una sala `WAITING`, el backend emite `game:deleted` con `{ id }` a `game:${gameId}`. Aunque el borrado en cascada elimine `GamePlayer`, los sockets que ya estaban unidos a esa sala reciben el aviso. El evento está tipado y documentado; no incluye datos sensibles.
+- Comportamiento del frontend pendiente: al recibir `game:deleted` para la partida abierta debe desuscribir su listener, mostrar «El creador ha eliminado la sala» y volver a «Mis partidas». Si estaba desconectado, el `GET /api/games/:id` devolverá `404` y debe ejecutar la misma salida sin reintentos infinitos.
+- Pruebas automatizadas: `npm.cmd run typecheck`, `npm.cmd test` (119 superadas, 1 omitida), `npm.cmd run build` y `npm.cmd run test:integration` (30/30 superadas) completadas el 03/11/2026.
+- Verificación del aviso de borrado: `npm.cmd run typecheck` y `npm.cmd test -- --run tests/sockets/socket.integration.test.ts` correctos; la suite de Socket.IO tiene 8 pruebas, incluida la recepción de `game:deleted` por dos participantes conectados.
+- Base de pruebas: configuré PostgreSQL local con una base aislada llamada `trivia_test`, a la que se aplicaron las 9 migraciones. El entorno `tests/.env.test`, ignorado por Git, contiene `DATABASE_URL`, `JWT_SECRET` y `FRONTEND_ORIGIN`; no se usan bases de Railway ni producción para pruebas destructivas.
+- Correcciones durante la prueba: actualicé expectativas de integración que aún esperaban el contrato anterior, sin `displayName`, `isCreator` ni `isReady`, y que no consideraban pública la puntuación tras cerrar una ronda. Añadí una regresión para una partida histórica 1–0 sin `winnerUserId`, que confirma que historial y detalle devuelven el mismo ganador, y mantuve el empate real. El seed con `tsx` falló en este equipo con un error temporal de memoria de Windows; tras compilar, `node dist/lib/seed.js` cargó las preguntas en `trivia_test` correctamente.
+- Pendiente de frontend: mostrar nombres y «Tú», organizar el historial por estado y paginarlo, recuperar/copiar el código de sala, enseñar confirmaciones, estado de turno/progreso, bloqueo de envíos, escuchar y limpiar `game:deleted`, y la pantalla final de ganar/perder/empate.
+- Pendiente de validación conjunta: recorrido visual con dos cuentas (victoria, derrota, empate, reconexión y sala eliminada), capturas/evidencias, y PRs enlazados de frontend y backend hacia `develop`.
 
 ## 21 · Despliega backend, DB y frontend
 

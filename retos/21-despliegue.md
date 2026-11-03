@@ -2,7 +2,7 @@
 
 **Tu misión:** Publica el proyecto para que dos personas puedan jugar desde sus equipos. El backend y la base de datos estarán en Railway; el frontend en Vercel.
 
-**Antes:** El [reto 20](20-frontend.md) debe estar aprobado e integrado en develop.
+**Antes:** Los retos [20](20-frontend.md) y [20B de jugabilidad](20b-jugabilidad.md) deben estar aprobados e integrados en `develop` en ambos repositorios.
 
 **Aprenderás:** Despliegue, entornos, secretos, migraciones de producción y comprobación pública.
 
@@ -54,4 +54,4 @@ Estado inicial: **Pendiente**. Los checks son la autoevaluación del alumno; el 
 
 No empieces el siguiente reto hasta que este PR esté aprobado e integrado. Las correcciones van en la misma rama y el mismo PR.
 
-[Volver al README](../README.md) · [Reto 20](20-frontend.md) · [Reto 22](22-entrega-final.md)
+[Volver al README](../README.md) · [Reto 20B](20b-jugabilidad.md) · [Reto 22](22-entrega-final.md)

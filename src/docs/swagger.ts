@@ -4,6 +4,8 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 // Librería que genera el documento OpenAPI a partir de los comentarios @openapi.
 import swaggerJSDoc from "swagger-jsdoc";
+// Los esquemas reutilizables viven en la carpeta schemas/.
+import { swaggerSchemas } from "./schemas/index.js";
 // Configuración principal de OpenAPI.
 const swaggerDefinition = {
   openapi: "3.0.0",
@@ -14,97 +16,15 @@ const swaggerDefinition = {
   },
   // Esquemas reutilizables por las diferentes rutas de la API.
   components: {
-    schemas: {
-      // Representa una pregunta que podemos devolver al cliente.
-      // Importante: NO contiene respuestaCorrecta.
-      PreguntaPublica: {
-        type: "object",
-        properties: {
-          id: {
-            type: "integer",
-            example: 1,
-          },
-          enunciado: {
-            type: "string",
-            example: "¿Cuál es la capital de España?",
-          },
-          opciones: {
-            type: "array",
-            minItems: 4,
-            maxItems: 4,
-            items: {
-              type: "string",
-            },
-            example: [
-              "Madrid",
-              "Barcelona",
-              "Valencia",
-              "Sevilla",
-            ],
-          },
-        },
-        required: ["id", "enunciado", "opciones"],
-      },
-      // Representa los datos necesarios para crear o actualizar una pregunta.
-      // Aquí SÍ incluimos respuestaCorrecta porque forma parte de la entrada.
-      PreguntaInput: {
-        description:
-          "El servidor elimina los espacios al principio y al final de enunciado y opciones. Los textos no pueden quedar vacíos después de esa limpieza y las opciones deben ser distintas después de limpiarlas.",
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          enunciado: {
-            type: "string",
-            minLength: 1,
-            example: "¿Cuál es la capital de España?",
-          },
-          opciones: {
-            type: "array",
-            minItems: 4,
-            maxItems: 4,
-            uniqueItems: true,
-            items: {
-              type: "string",
-              minLength: 1,
-            },
-            example: [
-              "Madrid",
-              "Barcelona",
-              "Valencia",
-              "Sevilla",
-            ],
-          },
-          respuestaCorrecta: {
-            type: "integer",
-            minimum: 0,
-            maximum: 3,
-            example: 0,
-          },
-        },
-        required: ["enunciado", "opciones", "respuestaCorrecta"],
-      },
-      // Representa el formato de los errores que devuelve nuestra API.
-      Error: {
-        type: "object",
-        properties: {
-          error: {
-            type: "object",
-            properties: {
-              code: {
-                type: "string",
-                example: "VALIDATION_ERROR",
-              },
-              message: {
-                type: "string",
-                example: "Los datos enviados no son válidos",
-              },
-            },
-            required: ["code", "message"],
-          },
-        },
-        required: ["error"],
+    securitySchemes: {
+      bearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
       },
     },
+    // Los esquemas viven en schemas.ts para no engordar este archivo.
+    schemas: swaggerSchemas,
   },
 };
 
