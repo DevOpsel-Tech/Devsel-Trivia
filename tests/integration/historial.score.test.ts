@@ -292,6 +292,9 @@ describe("GET /api/me/games — puntuación del usuario autenticado", () => {
     const historialB = await request(app)
       .get("/api/me/games")
       .set("Authorization", `Bearer ${tokenDe(usuarioB.id)}`);
+    const detalleA = await request(app)
+      .get(`/api/games/${partida.id}`)
+      .set("Authorization", `Bearer ${tokenDe(usuarioA.id)}`);
 
     const itemA = historialA.body.items.find(
       (item: any) => item.id === partida.id,
@@ -306,9 +309,41 @@ describe("GET /api/me/games — puntuación del usuario autenticado", () => {
     expect(itemB.winnerUserId).toBeNull();
     expect(itemA.isDraw).toBe(true);
     expect(itemB.isDraw).toBe(true);
+    expect(detalleA.body.winnerUserId).toBeNull();
+    expect(detalleA.body.isDraw).toBe(true);
   });
 
-   it("5. devuelve una sala WAITING con código, creador y confirmaciones", async () => {
+  it("5. recupera el ganador histórico sin winnerUserId igual que el detalle", async () => {
+    const { usuarioA, usuarioB, partida } = await crearEscenarioBase();
+    const { gameQuestion, correctaId, incorrectaId } =
+      await crearPreguntaConOpciones(partida.id, 0);
+
+    // Simula una partida anterior al campo winnerUserId: terminó 1-0 pero
+    // conserva null en ese campo que todavía no existía.
+    await responder(gameQuestion.id, usuarioA.id, correctaId, true);
+    await responder(gameQuestion.id, usuarioB.id, incorrectaId, false);
+    await prisma.game.update({
+      where: { id: partida.id },
+      data: { status: "FINISHED", finishedAt: new Date(), winnerUserId: null },
+    });
+
+    const historialA = await request(app)
+      .get("/api/me/games")
+      .set("Authorization", `Bearer ${tokenDe(usuarioA.id)}`);
+    const detalleA = await request(app)
+      .get(`/api/games/${partida.id}`)
+      .set("Authorization", `Bearer ${tokenDe(usuarioA.id)}`);
+    const item = historialA.body.items.find(
+      (game: any) => game.id === partida.id,
+    );
+
+    expect(item.winnerUserId).toBe(usuarioA.id);
+    expect(item.isDraw).toBe(false);
+    expect(detalleA.body.winnerUserId).toBe(usuarioA.id);
+    expect(detalleA.body.isDraw).toBe(false);
+  });
+
+   it("6. devuelve una sala WAITING con código, creador y confirmaciones", async () => {
     const { usuarioA, usuarioB, partida } = await crearEscenarioBase();
 
     // Convertimos el escenario en una sala aún no iniciada.
@@ -374,7 +409,7 @@ describe("GET /api/me/games — puntuación del usuario autenticado", () => {
   });
 
 
-  it("6. historial y detalle coinciden para el mismo usuario y estado", async () => {
+  it("7. historial y detalle coinciden para el mismo usuario y estado", async () => {
     const { usuarioA, usuarioB, partida } = await crearEscenarioBase();
     const { gameQuestion, correctaId, incorrectaId } =
       await crearPreguntaConOpciones(partida.id, 0);

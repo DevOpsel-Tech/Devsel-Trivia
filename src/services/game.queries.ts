@@ -168,10 +168,12 @@ export async function getGameById(gameId: number, userId?: number) {
         0,
       ));
 
-  const ganador =
-    esMultijugador && game.status === "FINISHED"
-      ? (game.winnerUserId ?? calcularGanador(players))
-      : null;
+  const resultado = resolverResultadoMultijugador(
+    game.mode,
+    game.status,
+    game.winnerUserId,
+    players,
+  );
 
   return {
     ...game,
@@ -180,9 +182,27 @@ export async function getGameById(gameId: number, userId?: number) {
     score: scoreIndividual,
     nextQuestionId,
     currentTurn,
-    winnerUserId: ganador,
-    isDraw: esMultijugador && game.status === "FINISHED" && ganador === null,
+    winnerUserId: resultado.winnerUserId,
+    isDraw: resultado.isDraw,
   };
+}
+
+/* Un resultado guardado es la fuente de verdad para partidas nuevas. Las
+   partidas anteriores al campo winnerUserId pueden tenerlo a null aun sin ser
+   empate: en ese caso usamos las puntuaciones ya reveladas. Detalle e
+   historial llaman a esta misma función para no discrepar. */
+function resolverResultadoMultijugador(
+  mode: "INDIVIDUAL" | "MULTIPLAYER",
+  status: "WAITING" | "ACTIVE" | "FINISHED",
+  winnerUserId: number | null,
+  players: { userId: number; score: number }[],
+) {
+  if (mode !== "MULTIPLAYER" || status !== "FINISHED") {
+    return { winnerUserId: null, isDraw: false };
+  }
+
+  const winner = winnerUserId ?? calcularGanador(players);
+  return { winnerUserId: winner, isDraw: winner === null };
 }
 
 /* Ganador de una partida ya cerrada; null cuando hay empate. */
@@ -289,8 +309,20 @@ export async function getMyGames(
   ]);
 
   const items = partidas.map((partida) => {
-    const finishedMultiplayer =
-      partida.mode === "MULTIPLAYER" && partida.status === "FINISHED";
+    const players = partida.players.map((player) => ({
+      userId: player.userId,
+      displayName: player.user.displayName,
+      turnOrder: player.turnOrder,
+      isCreator: player.isCreator,
+      isReady: player.isReady,
+      score: contarAciertosVisibles(partida, player.userId),
+    }));
+    const resultado = resolverResultadoMultijugador(
+      partida.mode,
+      partida.status,
+      partida.winnerUserId,
+      players,
+    );
 
     return {
       id: partida.id,
@@ -304,18 +336,11 @@ export async function getMyGames(
       score: contarAciertosVisibles(partida, userId),
 
       // Puntos públicos: solo rondas cerradas; nunca delatan el acierto pendiente.
-      players: partida.players.map((player) => ({
-        userId: player.userId,
-        displayName: player.user.displayName,
-        turnOrder: player.turnOrder,
-        isCreator: player.isCreator,
-        isReady: player.isReady,
-        score: contarAciertosVisibles(partida, player.userId),
-      })),
+      players,
 
       // El backend persiste y decide el resultado; el frontend solo lo presenta.
-      winnerUserId: finishedMultiplayer ? partida.winnerUserId : null,
-      isDraw: finishedMultiplayer && partida.winnerUserId === null,
+      winnerUserId: resultado.winnerUserId,
+      isDraw: resultado.isDraw,
     };
   });
   return { items, total, page, pageSize };

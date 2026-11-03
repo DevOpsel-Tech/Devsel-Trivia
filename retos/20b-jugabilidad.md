@@ -57,7 +57,7 @@ Prueba con dos cuentas en perfiles de navegador diferentes. Si se usan túneles,
 ## Comprueba tu entrega
 
 - [x] Un usuario nuevo se registra con nombre válido; nombres vacíos, fuera de longitud o entradas de tipo incorrecto dan 400 en la API. Dos nombres iguales no mezclan identidades.
-- [ ] Los usuarios anteriores siguen pudiendo iniciar sesión y conservan sus partidas, respuestas y puntos después de la migración. El nombre inicial se puede cambiar.
+- [x] Los usuarios anteriores siguen pudiendo iniciar sesión y conservan sus partidas, respuestas y puntos después de la migración. El nombre inicial se puede cambiar.
 - [x] Cambiar el nombre solo modifica el perfil autenticado; enviar `role`, un ID ajeno u otros campos no permite modificar privilegios ni otra cuenta.
 - [ ] Sala y resultado muestran nombres y «Tú» sin publicar emails del rival, contraseñas ni hashes.
 - [ ] Las tarjetas distinguen espera, juego y finalización; carga, vacío, error y paginación tienen una presentación útil.
@@ -87,8 +87,9 @@ Enseña dos cuentas con nombres distintos: crear sala, copiar código, entrar, c
 Estado: **Pendiente**. Los checks son autoevaluación; el tutor confirma el cierre.
 
 - PR y commits de backend/frontend: backend en la rama `reto/20b-jugabilidad`, con el commit `666ed97` («feat: add public player names and game room contracts»). Quedan por crear/enlazar el PR hacia `develop` y el PR del frontend.
-- Migración ensayada y datos conservados: migración `20261102103820_add_user_display_name` aplicada en la base aislada local `trivia_test`. Añade el nombre de forma compatible y asigna `Jugador <id>` a usuarios existentes antes de hacerlo obligatorio. Falta ensayarla con una copia que contenga datos reales previos.
-- Pruebas automatizadas y comandos por repo: backend comprobado el 03/11/2026 con `npm.cmd run typecheck`, `npm.cmd test` (119 superadas, 1 omitida), `npm.cmd run build` y `npm.cmd run test:integration` (29/29 superadas). Pendiente ejecutar y registrar los comandos equivalentes del frontend.
+- Migración ensayada y datos conservados: ensayo completado en `trivia_test_legacy_20b`, una base local aislada creada con el esquema anterior. Se insertaron usuario con hash Argon2, partida, participante, respuesta y puntuación; Prisma aplicó `20261102103820_add_user_display_name`. Se comprobó login, nombre inicial `Jugador 1`, cambio de nombre y conservación de IDs, relaciones, respuesta y puntuación.
+- Pruebas automatizadas y comandos por repo: backend comprobado el 03/11/2026 con `npm.cmd run typecheck`, `npm.cmd test` (119 superadas, 1 omitida), `npm.cmd run build` y `npm.cmd run test:integration` (30/30 superadas). Pendiente ejecutar y registrar los comandos equivalentes del frontend.
+- Mejora opcional aplicada: `displayNameSchema` compartido por registro y perfil, sin cambiar las reglas ni los mensajes de validación.
 - Prueba con dos cuentas (ganador/perdedor y empate): pendiente de realizar desde el frontend.
 - Prueba de fallo, reconexión y sala eliminada: la recuperación y permisos están cubiertos por integración del backend; falta la prueba visual conjunta de error, reconexión y sala eliminada.
 - Orígenes locales/túneles utilizados y resultados CORS: pruebas locales con `FRONTEND_ORIGIN=http://localhost:5173` en el entorno aislado. Pendiente comprobar el frontend y, si se usa, documentar el origen de un túnel.

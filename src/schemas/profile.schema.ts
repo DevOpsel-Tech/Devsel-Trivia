@@ -1,12 +1,10 @@
 import { z } from "zod";
+import { displayNameSchema } from "./display-name.schema.js";
 
 // Único dato que el usuario autenticado puede modificar de su propio perfil.
 export const updateMyProfileSchema = z
   .object({
-    displayName: z
-      .string()
-      .trim() // El valor persistido nunca tendrá espacios exteriores.
-      .min(2, "El nombre debe tener al menos 2 caracteres")
-      .max(30, "El nombre no puede superar los 30 caracteres"),
+    // Reutiliza la misma normalización y límites que el registro.
+    displayName: displayNameSchema,
   })
   .strict(); // Rechaza id, role, email, score u otros campos no autorizados.

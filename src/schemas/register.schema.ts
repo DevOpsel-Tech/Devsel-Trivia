@@ -1,14 +1,12 @@
 import { z } from "zod";
+import { displayNameSchema } from "./display-name.schema.js";
 
 // Validamos los datos que llegan al POST api/auth/register.
 export const registerSchema = z
   /* El email se normaliza, quitamos los espacios de los extremos y lo pasamos a minúsculas*/
   .object({
-    displayName: z
-      .string()
-      .trim()
-      .min(2, "El nombre debe tener al menos 2 caracteres")
-      .max(30, "El nombre no puede superar los 30 caracteres"),
+    // Misma regla que usa el perfil al cambiar el nombre.
+    displayName: displayNameSchema,
     email: z
       .string()
       .trim()
