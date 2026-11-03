@@ -39,6 +39,20 @@ Aviso de que el estado de la partida ha cambiado. Se emite **únicamente tras gu
 - **Destino:** Sala `game:${gameId}` (solo sockets que se hayan unido correctamente con `join:game`).
 - **Payload (mínimo y público):**
 
+### `game:deleted`
+
+Aviso de que el creador eliminó una sala multijugador que seguía en espera.
+
+- **Destino:** Sala `game:${gameId}`. Solo llega a sockets que se hubieran unido
+  correctamente mientras aún eran participantes.
+- **Cuándo se emite:** Después de que `DELETE /api/games/:id` haya confirmado
+  el borrado en base de datos.
+- **Payload:** `{ id: number }`.
+- **Cliente:** Debe dejar de consultar esa partida, mostrar un mensaje como
+  «El creador ha eliminado la sala» y volver a «Mis partidas». Si estaba
+  desconectado y no recibe el evento, el `GET /api/games/:id` posterior
+  devolverá `404`; debe tratarlo igual, sin reintentos infinitos.
+
 ### Reconexión
 
 Una reconexión crea un socket nuevo. Por tanto, el servidor no puede recuperar automáticamente datos guardados en `socket.data` del socket anterior, ni recibe automáticamente un evento `reconnect` del cliente.

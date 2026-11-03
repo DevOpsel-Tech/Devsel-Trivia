@@ -207,6 +207,53 @@ describe("Socket.IO integración", () => {
     s2.disconnect();
   });
 
+  it("los participantes reciben game:deleted cuando se elimina su sala", async () => {
+    vi.mocked(prisma.gamePlayer.findFirst).mockResolvedValue({} as never);
+
+    const s1 = registerClient(
+      Client(`http://localhost:${port}`, {
+        auth: { token: tokenDe(1) },
+      }) as AppClientSocket,
+    );
+    const s2 = registerClient(
+      Client(`http://localhost:${port}`, {
+        auth: { token: tokenDe(2) },
+      }) as AppClientSocket,
+    );
+
+    await Promise.all([
+      new Promise<void>((resolve) => s1.once("connect", resolve)),
+      new Promise<void>((resolve) => s2.once("connect", resolve)),
+    ]);
+
+    const joined1 = new Promise<void>((resolve) =>
+      s1.once("joined:game", () => resolve()),
+    );
+    const joined2 = new Promise<void>((resolve) =>
+      s2.once("joined:game", () => resolve()),
+    );
+    s1.emit("join:game", 7);
+    s2.emit("join:game", 7);
+    await Promise.all([joined1, joined2]);
+
+    const deleted1 = new Promise<void>((resolve) =>
+      s1.once("game:deleted", (payload) => {
+        expect(payload).toEqual({ id: 7 });
+        resolve();
+      }),
+    );
+    const deleted2 = new Promise<void>((resolve) =>
+      s2.once("game:deleted", (payload) => {
+        expect(payload).toEqual({ id: 7 });
+        resolve();
+      }),
+    );
+
+    ioServer.to("game:7").emit("game:deleted", { id: 7 });
+
+    await Promise.all([deleted1, deleted2]);
+  });
+
   it("un socket nuevo debe volver a emitir join:game", async () => {
     vi.mocked(prisma.gamePlayer.findFirst).mockResolvedValue({
       gameId: 7,

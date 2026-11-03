@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { deleteWaitingGame } from "../services/game.services.js";
 import { responderError } from "../errors/responderError.js";
 import { idParamSchema } from "../schemas/question-id.schema.js";
+import { io } from "../sockets/index.js";
 
 // El creador puede eliminar una sala multijugador que aún está esperando.
 export async function deleteGameController(req: Request, res: Response) {
@@ -18,6 +19,11 @@ export async function deleteGameController(req: Request, res: Response) {
   if (!resultado.ok) {
     return responderError(res, resultado.error);
   }
+
+  // El borrado ya se confirmó en la base de datos. Los sockets que estaban
+  // en la sala aún pueden recibir este aviso aunque GamePlayer se borre en
+  // cascada junto con la partida.
+  io?.to(`game:${gameId}`).emit("game:deleted", { id: gameId });
 
   return res.status(204).send();
 }
