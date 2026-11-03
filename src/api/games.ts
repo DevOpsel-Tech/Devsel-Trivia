@@ -1,11 +1,26 @@
 import { apiRequest } from "./http";
-// Campos que incluye en cada partida del historial
+// Datos públicos de un participante. Nunca contiene el email ni credenciales
+export type GamePlayer = {
+  userId: number;
+  displayName: string;
+  turnOrder: number;
+  score: number; //Puntuación única no revela una ronda incompleta.
+  isReady: boolean;
+  isCreator: boolean;
+};
+
+//Cada tarjeta de GET /api/me/games
 export type GameHistoryItem = {
   id: number;
+  mode: "INDIVIDUAL" | "MULTIPLAYER";
   status: "WAITING" | "ACTIVE" | "FINISHED";
-  createdAt: string;
-  finishedAt: string | null;
+  code: string | null;
+  createdAt: string; //ISO 8601
+  finishedAt: string | null; //ISO 8601
   score: number;
+  players: GamePlayer[];
+  winnerUserId: number | null; //null si no hay ganador
+  isDraw: boolean; //true si hay empate
 };
 
 // La respuesta completa de GET /api/me/games
@@ -33,6 +48,20 @@ export type CreatedMultiplayerGame = {
   code: string;
 };
 
+// Datos que devuelve POST /api/games al crear una partida individual.
+export type CreatedIndividualGame = {
+  id: number;
+  status: "ACTIVE";
+};
+
+export function createIndividualGame(token: string) {
+  return apiRequest<CreatedIndividualGame>("/api/games", {
+    method: "POST",
+    token,
+    body: { mode: "INDIVIDUAL" },
+  });
+}
+
 // Crea una sola y envía  el token para auteticar la petición.
 export function createMultiplayerGame(token: string) {
   return apiRequest<CreatedMultiplayerGame>("/api/games", {
@@ -42,7 +71,6 @@ export function createMultiplayerGame(token: string) {
   });
 }
 export function joinMultiplayerGame(token: string, code: string) {
-  
   return apiRequest<{ id: number; status: string }>("/api/games/join", {
     method: "POST",
     token,
@@ -57,29 +85,46 @@ export function deleteWaitingGame(token: string, gameId: number) {
   });
 }
 
+export type GameQuestion = {
+  id: number;
+  position: number;
+  statement: string;
+  answered: boolean;
+  // Solo se devuelven en multijugador.
+  answeredCount?: number;
+  revealed?: boolean;
+  results?: {
+    userId: number;
+    isCorrect: boolean;
+  }[] | null;
+  choices: {
+    id: number;
+    text: string;
+    position: number;
+  }[];
+};
+
+// GET /api/games/:id comparte estos campos entre partidas individuales y
+// multijugador. Los campos de sala solo existen en MULTIPLAYER.
 export type GameDetails = {
   id: number;
   status: "WAITING" | "ACTIVE" | "FINISHED";
-  players: {
+  mode?: "INDIVIDUAL" | "MULTIPLAYER";
+  turnVersion: number; //Incrementa cada vez que un jugador responde o se une a la partida.
+  createdAt: string; //ISO 8601
+  finishedAt: string | null; //ISO 8601
+  score: number; //Puntuación única no revela una ronda incompleta.
+  nextQuestionId: number | null; // null si no hay más preguntas
+  code?: string | null;
+  players?: GamePlayer[];
+  winnerUserId?: number | null; //null si no hay ganador
+  isDraw?: boolean; //true si hay empate
+  currentTurn?: {
     userId: number;
     turnOrder: number;
-    score: number;
-    isReady: boolean;
-  }[];
-  currentTurn: {
-    userId: number;
     gameQuestionId: number;
   } | null;
-
-  questions: {
-    id: number;
-    statement: string;
-    answered: boolean;
-    choices: {
-      id: number;
-      text: string;
-    }[];
-  }[];
+  questions: GameQuestion[];
 };
 export function getGame(token: string, gameId: number) {
   return apiRequest<GameDetails>(`/api/games/${gameId}`, { token });
@@ -90,10 +135,7 @@ export function startMultiplayerGame(token: string, gameId: number) {
     id: number;
     status: "WAITING" | "ACTIVE";
     started: boolean;
-  }>(
-    `/api/games/${gameId}/start`,
-    { method: "POST", token },
-  );
+  }>(`/api/games/${gameId}/start`, { method: "POST", token });
 }
 export function submitAnswer(
   token: string,

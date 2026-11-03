@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { ApiError } from "../api/http";
 import { env } from "../config/env";
+import { GameParticipants } from "./GameParticipants";
+import { GameResult } from "./GameResult";
+import { GameScoreboard } from "./GameScoreboard";
 import {
   getGame,
   startMultiplayerGame,
@@ -16,6 +19,9 @@ type GameRoomProps = {
   onAuthenticationError: () => void;
 };
 
+// Evento privado que emite el backend a los participantes de una sala borrada.
+type GameDeletedEvent = { id: number };
+
 export function GameRoom({
   gameId,
   token,
@@ -24,18 +30,62 @@ export function GameRoom({
   onAuthenticationError,
 }: GameRoomProps) {
   const [game, setGame] = useState<GameDetails | null>(null);
+  // Impide que una respuesta HTTP más antigua reemplace un estado más reciente.
+  const latestTurnVersion = useRef(-1);
+  const deletedRoomTimeoutRef = useRef<number | null>(null);
   const [error, setError] = useState("");
   const [isStarting, setIsStarting] = useState(false);
   const [selectedChoiceId, setSelectedChoiceId] = useState<number | null>(null);
   const [isAnswerSending, setIsAnswerSending] = useState(false);
+  const [socketNotice, setSocketNotice] = useState("");
+  // Evita pulsar varias veces mientras recuperamos el estado de la partida.
+  const [isRefreshingGame, setIsRefreshingGame] = useState(false);
+
+  const returnAfterRoomDeleted = useCallback(() => {
+    setError("El creador ha eliminado la sala. Volviendo a tus partidas…");
+
+    // El evento Socket.IO y un GET posterior pueden llegar casi a la vez.
+    // Programamos una única vuelta al listado.
+    if (deletedRoomTimeoutRef.current !== null) return;
+
+    deletedRoomTimeoutRef.current = window.setTimeout(() => {
+      deletedRoomTimeoutRef.current = null;
+      onBack();
+    }, 1200);
+  }, [onBack]);
+
+  useEffect(() => {
+    return () => {
+      if (deletedRoomTimeoutRef.current !== null) {
+        window.clearTimeout(deletedRoomTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const loadGame = useCallback(async () => {
     try {
       const response = await getGame(token, gameId);
-      setGame(response);
+      if (response.turnVersion >= latestTurnVersion.current) {
+        latestTurnVersion.current = response.turnVersion;
+        setGame(response);
+      }
       setError("");
+      setSocketNotice("");
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.status === 401) {
         onAuthenticationError();
+        return;
+      }
+
+      if (requestError instanceof ApiError && requestError.status === 404) {
+        returnAfterRoomDeleted();
+        return;
+      }
+
+      if (!navigator.onLine) {
+        setSocketNotice(
+          "Sin conexión. Conservamos el estado actual y lo actualizaremos al reconectar.",
+        );
         return;
       }
 
@@ -45,10 +95,35 @@ export function GameRoom({
           : "No se pudo cargar la partida.",
       );
     }
-  }, [gameId, onAuthenticationError, token]);
+  }, [gameId, onAuthenticationError, returnAfterRoomDeleted, token]);
+  /* Recupera el snapshop persistido del backend tras un error
+  LoadGame y atrata 401, 404, conexión y mensajes de API */
+
+  async function handleRefreshGame() {
+    setIsRefreshingGame(true);
+
+    try {
+      await loadGame();
+    } finally {
+      setIsRefreshingGame(false);
+    }
+  }
 
   useEffect(() => {
     void Promise.resolve().then(loadGame);
+  }, [loadGame]);
+
+  useEffect(() => {
+    function handleOnline() {
+      setSocketNotice("Conexión recuperada. Actualizando la partida…");
+      void loadGame();
+    }
+
+    window.addEventListener("online", handleOnline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+    };
   }, [loadGame]);
 
   useEffect(() => {
@@ -56,22 +131,96 @@ export function GameRoom({
       auth: { token },
     });
 
+    function isAuthenticationSocketError(socketError: {
+      message?: string;
+      data?: unknown;
+    }) {
+      const data =
+        typeof socketError.data === "object" && socketError.data !== null
+          ? socketError.data
+          : {};
+
+      const status =
+        "status" in data && typeof data.status === "number"
+          ? data.status
+          : undefined;
+
+      const code =
+        "code" in data && typeof data.code === "string" ? data.code : undefined;
+
+      const message = socketError.message?.toLowerCase() ?? "";
+
+      return (
+        status === 401 ||
+        code === "UNAUTHORIZED" ||
+        code === "INVALID_TOKEN" ||
+        code === "TOKEN_EXPIRED" ||
+        message.includes("unauthorized") ||
+        message.includes("jwt") ||
+        message.includes("token")
+      );
+    }
+
     socket.on("connect", () => {
+      setSocketNotice("Conexión recuperada. Actualizando la partida…");
       socket.emit("join:game", gameId);
     });
+
+    socket.on("connect_error", (socketError) => {
+      if (isAuthenticationSocketError(socketError)) {
+        onAuthenticationError();
+        return;
+      }
+
+      setSocketNotice("Se ha perdido la conexión. Reintentando conectar…");
+    });
+
+    socket.on("disconnect", (reason) => {
+      // El backend fuerza esta desconexión cuando vence el JWT. Socket.IO no
+      // reintenta automáticamente una desconexión ordenada por el servidor.
+      if (reason === "io server disconnect") {
+        onAuthenticationError();
+        return;
+      }
+
+      // Una desconexión iniciada por el desmontaje del componente no requiere aviso.
+      if (reason === "io client disconnect") return;
+
+      // El resto son cortes temporales (red, transporte o servidor reiniciando).
+      setSocketNotice("Se ha perdido la conexión. Reintentando conectar…");
+    });
+
     socket.on("joined:game", () => {
       setSelectedChoiceId(null);
       void loadGame();
     });
-    socket.on("game:updated", () => {
-      setSelectedChoiceId(null);
-      void loadGame();
+
+    socket.on("game:updated", (event: { turnVersion: number }) => {
+      // Una unión puede conservar turnVersion. Recuperamos el snapshot
+      // persistido también en ese caso; loadGame evita retroceder.
+      if (event.turnVersion >= latestTurnVersion.current) {
+        setSelectedChoiceId(null);
+        void loadGame();
+      }
     });
 
+    socket.on("error:game", ({ message }: { message: string }) => {
+      setError(message);
+    });
+
+    function onGameDeleted({ id }: GameDeletedEvent) {
+      if (id !== gameId) return;
+      returnAfterRoomDeleted();
+    }
+
+    socket.on("game:deleted", onGameDeleted);
+
     return () => {
+      socket.off("game:deleted", onGameDeleted);
       socket.disconnect();
     };
-  }, [gameId, loadGame, token]);
+  }, [gameId, loadGame, onAuthenticationError, returnAfterRoomDeleted, token]);
+
   /* Añadimos la acción de iniciar la sala, el bcak decide si el usuario puede hacerlo
 si o es creador o falta un jugador, muestra error*/
 
@@ -97,12 +246,33 @@ si o es creador o falta un jugador, muestra error*/
     }
   }
 
+  const isMultiplayer = game?.mode === "MULTIPLAYER";
+  // En individual no hay currentTurn: nextQuestionId identifica la pregunta propia.
+  const currentQuestionId = isMultiplayer
+    ? game?.currentTurn?.gameQuestionId
+    : game?.nextQuestionId;
   const currentQuestion = game?.questions.find(
-    (question) => question.id === game.currentTurn?.gameQuestionId,
+    (question) => question.id === currentQuestionId,
   );
-  const isYourTurn = game?.currentTurn?.userId === userId;
-  const currentPlayer = game?.players.find((player) => player.userId === userId);
-  const opponent = game?.players.find((player) => player.userId !== userId);
+  const totalQuestions = game?.questions.length ?? 0;
+  const currentQuestionNumber = currentQuestion
+    ? currentQuestion.position + 1
+    : totalQuestions;
+
+  const isYourTurn = isMultiplayer
+    ? game?.currentTurn?.userId === userId
+    : game?.status === "ACTIVE";
+  const currentPlayer = game?.players?.find(
+    (player) => player.userId === userId,
+  );
+  const opponent = game?.players?.find((player) => player.userId !== userId);
+  const opponentName = opponent?.displayName ?? "tu rival";
+
+  const finalMessage = game?.isDraw
+    ? "Empate"
+    : game?.winnerUserId === userId
+      ? "Ganaste"
+      : "Perdiste";
 
   async function handleAnswer(choiceId: number) {
     if (!currentQuestion || isAnswerSending) return;
@@ -148,11 +318,29 @@ si o es creador o falta un jugador, muestra error*/
       </div>
 
       {error && (
-        <p
+        <div
           className="mt-5 rounded-lg bg-red-950/60 p-3 text-sm text-red-200"
           role="alert"
         >
-          {error}
+          <p>{error}</p>
+
+          {/* Recupera el estado antes de que el usuario vuelva a intentar una acción. */}
+          <button
+            type="button"
+            onClick={() => void handleRefreshGame()}
+            disabled={isRefreshingGame || isStarting || isAnswerSending}
+            className="mt-3 rounded border border-red-200/60 px-3 py-1.5 text-xs font-semibold text-red-100 hover:bg-red-900/50 disabled:cursor-wait disabled:opacity-60"
+          >
+            {isRefreshingGame ? "Actualizando…" : "Actualizar estado"}
+          </button>
+        </div>
+      )}
+      {socketNotice && (
+        <p
+          className="mt-5 rounded-lg border border-amber-400/40 bg-amber-950/30 p-3 text-sm text-amber-100"
+          role="status"
+        >
+          {socketNotice}
         </p>
       )}
 
@@ -160,37 +348,43 @@ si o es creador o falta un jugador, muestra error*/
 
       {game?.status === "WAITING" && (
         <div className="mt-6 space-y-4">
-          {game.players.length < 2 ? (
+          <GameParticipants
+            currentPlayer={currentPlayer}
+            opponent={opponent}
+          />
+          {currentPlayer?.isReady ? (
             <p className="text-sm text-[#A3A3A3]" role="status">
-              Esperando a que se una el segundo jugador.
-            </p>
-          ) : currentPlayer?.isReady ? (
-            <p className="text-sm text-[#A3A3A3]" role="status">
-              Has aceptado iniciar la partida. Esperando a que el otro jugador
-              confirme.
+              Esperando a tu rival.
             </p>
           ) : (
             <>
-              <p className="text-sm text-[#A3A3A3]" role="status">
-                {opponent?.isReady
-                  ? "El otro jugador ya está listo. Acepta para comenzar la partida."
-                  : "Acepta para indicar que estás listo. Las preguntas solo aparecerán cuando ambos aceptéis."}
-              </p>
               <button
                 type="button"
                 onClick={handleStart}
                 disabled={isStarting}
                 className="rounded-lg bg-[#A3E635] px-4 py-2 text-sm font-bold text-[#090909] transition hover:bg-[#BEF264] disabled:cursor-wait disabled:opacity-60"
               >
-                {isStarting ? "Confirmando..." : "Aceptar e iniciar partida"}
+                {isStarting ? "Confirmando..." : "Prepararme"}
               </button>
             </>
           )}
         </div>
       )}
+
+      {game?.status === "ACTIVE" && isMultiplayer && (
+        <GameScoreboard
+          currentPlayer={currentPlayer}
+          opponent={opponent}
+          opponentName={opponentName}
+        />
+      )}
+
       {game?.status === "ACTIVE" && currentQuestion && isYourTurn && (
         <article className="ambient-card mx-auto mt-6 max-w-xl rounded-2xl border border-[#2B2B2B] bg-[#0D0D0D] p-4 sm:p-6">
           <h3 className="text-lg font-bold text-[#A3E635]">Tu pregunta</h3>
+          <p className="mt-1 text-sm text-[#A3A3A3]">
+            Pregunta {currentQuestionNumber} de {totalQuestions} · Tu turno
+          </p>
           <p className="mt-3 text-base text-[#F8FAFC] sm:text-lg">
             {currentQuestion.statement}
           </p>
@@ -221,16 +415,22 @@ si o es creador o falta un jugador, muestra error*/
         </article>
       )}
 
-      {game?.status === "ACTIVE" && !isYourTurn && (
+      {game?.status === "ACTIVE" && isMultiplayer && !isYourTurn && (
         <p className="mt-6 text-center text-sm font-semibold text-[#A3A3A3]">
-          Esperando a que el otro jugador responda...
+          Turno de {opponentName}. Esperando su respuesta…
         </p>
       )}
 
       {game?.status === "FINISHED" && (
-        <p className="mt-6 rounded-xl border border-[#A3E635]/40 bg-[#A3E635]/10 p-4 text-sm font-semibold text-[#F8FAFC]" role="status">
-          Partida finalizada. El resultado está disponible en el historial.
-        </p>
+        <GameResult
+          isMultiplayer={isMultiplayer}
+          finalMessage={finalMessage}
+          score={game.score}
+          currentPlayer={currentPlayer}
+          opponent={opponent}
+          opponentName={opponentName}
+          onBack={onBack}
+        />
       )}
     </section>
   );

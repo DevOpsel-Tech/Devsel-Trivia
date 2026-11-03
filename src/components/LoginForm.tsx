@@ -12,6 +12,7 @@ export type LoginResponse = {
   user: {
     id: number;
     email: string;
+    displayName: string;
   };
 };
 
