@@ -19,6 +19,14 @@ export const gameSchemas = {
         description: "Solo se incluye en partidas multijugador.",
         example: "MULTIPLAYER",
       },
+
+      code: {
+        type: "string",
+        nullable: true,
+        description:
+          "Código de invitación de una partida multijugador; permite recuperarlo al volver a una sala WAITING.",
+        example: "ABCDEF",
+      },
       currentTurn: {
         type: "object",
         nullable: true,
@@ -39,6 +47,11 @@ export const gameSchemas = {
           type: "object",
           properties: {
             userId: { type: "integer", example: 1 },
+            displayName: {
+              type: "string",
+              description: "Nombre público actual del participante.",
+              example: "Ana",
+            },
             turnOrder: { type: "integer", enum: [1, 2], example: 1 },
             isReady: {
               type: "boolean",
@@ -46,9 +59,22 @@ export const gameSchemas = {
                 "Indica si este jugador ya confirmó que está preparado para iniciar la partida.",
               example: false,
             },
+            isCreator: {
+              type: "boolean",
+              description:
+                "Indica qué participante creó la sala y puede eliminarla mientras está en WAITING.",
+              example: true,
+            },
             score: { type: "integer", example: 2 },
           },
-          required: ["userId", "turnOrder", "isReady", "score"],
+          required: [
+            "userId",
+            "displayName",
+            "turnOrder",
+            "isCreator",
+            "isReady",
+            "score",
+          ],
         },
       },
       winnerUserId: {
@@ -266,11 +292,37 @@ export const gameSchemas = {
     type: "object",
     properties: {
       id: { type: "integer", example: 1 },
+      mode: {
+        type: "string",
+        enum: ["INDIVIDUAL", "MULTIPLAYER"],
+        example: "MULTIPLAYER",
+      },
+      code: {
+        type: "string",
+        nullable: true,
+        description:
+          "Código de invitación; útil para recuperar una sala que sigue en WAITING.",
+        example: "ABCDEF",
+      },
+      isDraw: {
+        type: "boolean",
+        description:
+          "true solo si una partida multijugador terminada acabó en empate.",
+        example: false,
+      },
       status: {
         type: "string",
         enum: ["WAITING", "ACTIVE", "FINISHED"],
         example: "FINISHED",
       },
+      winnerUserId: {
+        type: "integer",
+        nullable: true,
+        description:
+          "ID del ganador en una partida multijugador terminada; null en empate, individual o partida no finalizada.",
+        example: 2,
+      },
+
       createdAt: {
         type: "string",
         format: "date-time",
@@ -287,11 +339,54 @@ export const gameSchemas = {
       },
       score: {
         type: "integer",
-        description: "Puntos acumulados (1 por acierto).",
+        description: "Puntos propios acumulados (1 por acierto).",
         example: 3,
       },
+      players: {
+        type: "array",
+        description:
+          "Participantes de la partida. Las puntuaciones solo incluyen rondas ya reveladas.",
+        items: {
+          type: "object",
+          properties: {
+            userId: { type: "integer", example: 1 },
+            displayName: {
+              type: "string",
+              description: "Nombre público actual del participante.",
+              example: "Ana",
+            },
+            turnOrder: { type: "integer", enum: [1, 2], example: 1 },
+            isCreator: { type: "boolean", example: true },
+            isReady: { type: "boolean", example: true },
+            score: {
+              type: "integer",
+              description: "Puntuación pública visible en este momento.",
+              example: 2,
+            },
+          },
+          required: [
+            "userId",
+            "displayName",
+            "turnOrder",
+            "isCreator",
+            "isReady",
+            "score",
+          ],
+        },
+      },
     },
-    required: ["id", "status", "createdAt", "finishedAt", "score"],
+    required: [
+      "id",
+      "mode",
+      "status",
+      "code",
+      "winnerUserId",
+      "isDraw",
+      "createdAt",
+      "finishedAt",
+      "score",
+      "players",
+    ],
   },
 
   /* Envolvente del historial: lista paginada de partidas públicas. */

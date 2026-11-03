@@ -7,7 +7,7 @@ import { Router } from "express";
 // El middleware del reto 12 valida el token JWT y deja el userId en res.locals.
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { getMyGamesController } from "../controllers/game.controller.js";
-
+import { updateMeController } from "../controllers/auth.controller.js";
 // Creamos el router de "me".
 export const meRouter = Router();
 
@@ -15,3 +15,5 @@ export const meRouter = Router();
    La cadena es la de siempre: primero el token (401 si falta),
    después el controlador. */
 meRouter.get("/games", authMiddleware, getMyGamesController);
+// PATCH /api/me → modifica únicamente el displayName del usuario autenticado.
+meRouter.patch("/", authMiddleware, updateMeController);

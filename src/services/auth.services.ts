@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 
 /* Creamos un usuario nuevo a partir de un email y una contraseña. */
-export async function registerUser(email: string, password: string) {
+export async function registerUser(email: string, password: string, displayName: string) {
   const passwordHash = await argon2.hash(password);
 
   try {
@@ -12,10 +12,12 @@ export async function registerUser(email: string, password: string) {
       data: {
         email,
         passwordHash,
+        displayName,
       },
       select: {
         id: true,
         email: true,
+        displayName: true,
       },
     });
     return user;
@@ -33,7 +35,7 @@ export async function registerUser(email: string, password: string) {
   }
 }
 
-/* Función que busca el email y verifica la contraseña contra el hash, 
+/* Función que busca el email y verifica la contraseña contra el hash,
 si la contraseña es incorrecta o el email no existe, devolvemos null; nunca el hash */
 
 // Esta función busca al usuario y comprueba que la contraseña es correcta.
@@ -60,6 +62,7 @@ export async function loginUser(email: string, password: string) {
   return {
     id: user.id,
     email: user.email,
+    displayName: user.displayName,
   };
 }
 
@@ -72,6 +75,23 @@ export async function getPublicUserById(userId: number) {
       id: true,
       email: true,
       role: true,
+      displayName: true,
+    },
+  });
+}
+// Actualiza solo el nombre del usuario identificado por el JWT.
+export async function updateDisplayNameById(
+  userId: number,
+  displayName: string,
+) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { displayName },
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      displayName: true,
     },
   });
 }

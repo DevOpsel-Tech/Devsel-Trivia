@@ -49,15 +49,18 @@ export async function getGameController(req: Request, res: Response) {
     ...(esMultijugador
       ? {
           mode: game.mode,
+          code: game.code, // código de invitación a la partida
           // A quién le toca y qué pregunta debe responder ahora.
           currentTurn: game.currentTurn,
           // Puntuación revelada: no incluye la ronda pendiente de que
           // responda el segundo jugador.
           players: game.players.map((player) => ({
             userId: player.userId,
+            displayName: player.displayName,
             turnOrder: player.turnOrder,
             score: player.score,
             isReady: player.isReady,
+            isCreator: player.isCreator,
           })),
           winnerUserId: game.winnerUserId,
           isDraw: game.isDraw,

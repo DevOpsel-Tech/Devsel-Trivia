@@ -37,6 +37,7 @@ describe("POST /api/auth/login", () => {
     vi.mocked(loginUser).mockResolvedValue({
       id: 42,
       email: "juan@email.com",
+      displayName: "Juan",
     });
 
     const respuesta = await request(app).post("/api/auth/login").send({
@@ -50,6 +51,7 @@ describe("POST /api/auth/login", () => {
     expect(respuesta.body.user).toEqual({
       id: 42,
       email: "juan@email.com",
+      displayName: "Juan",
     });
 
     // Comprobamos que el token identifica al usuario correcto.
@@ -98,10 +100,107 @@ describe("POST /api/auth/register", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
+  it("registra un nombre válido, lo recorta y lo devuelve", async () => {
+    vi.mocked(registerUser).mockResolvedValue({
+      id: 7,
+      email: "ana@email.com",
+      displayName: "Ana",
+    });
+
+    const respuesta = await request(app).post("/api/auth/register").send({
+      displayName: "  Ana  ",
+      email: "ana@email.com",
+      password: "secreta123",
+    });
+
+    expect(respuesta.status).toBe(201);
+    expect(respuesta.body).toEqual({
+      id: 7,
+      email: "ana@email.com",
+      displayName: "Ana",
+    });
+    // El controlador entrega al servicio el valor normalizado por Zod.
+    expect(registerUser).toHaveBeenCalledWith(
+      "ana@email.com",
+      "secreta123",
+      "Ana",
+    );
+  });
+    it("permite que dos usuarios distintos compartan displayName", async () => {
+    vi.mocked(registerUser)
+      .mockResolvedValueOnce({
+        id: 8,
+        email: "ana1@email.com",
+        displayName: "Ana",
+      })
+      .mockResolvedValueOnce({
+        id: 9,
+        email: "ana2@email.com",
+        displayName: "Ana",
+      });
+
+    const primerRegistro = await request(app).post("/api/auth/register").send({
+      displayName: "Ana",
+      email: "ana1@email.com",
+      password: "secreta123",
+    });
+
+    const segundoRegistro = await request(app).post("/api/auth/register").send({
+      displayName: "Ana",
+      email: "ana2@email.com",
+      password: "secreta123",
+    });
+
+    expect(primerRegistro.status).toBe(201);
+    expect(segundoRegistro.status).toBe(201);
+
+    expect(primerRegistro.body).toMatchObject({
+      id: 8,
+      email: "ana1@email.com",
+      displayName: "Ana",
+    });
+    expect(segundoRegistro.body).toMatchObject({
+      id: 9,
+      email: "ana2@email.com",
+      displayName: "Ana",
+    });
+  });
+
+  it.each([
+    ["nombre ausente", { email: "ana@email.com", password: "secreta123" }],
+    [
+      "solo espacios",
+      { displayName: "   ", email: "ana@email.com", password: "secreta123" },
+    ],
+    [
+      "un caracter",
+      { displayName: "A", email: "ana@email.com", password: "secreta123" },
+    ],
+    [
+      "mas de 30 caracteres",
+      {
+        displayName: "A".repeat(31),
+        email: "ana@email.com",
+        password: "secreta123",
+      },
+    ],
+    [
+      "tipo incorrecto",
+      { displayName: 123, email: "ana@email.com", password: "secreta123" },
+    ],
+  ])("rechaza %s sin llamar al servicio", async (_caso, body) => {
+    const respuesta = await request(app).post("/api/auth/register").send(body);
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe("VALIDATION_ERROR");
+    expect(registerUser).not.toHaveBeenCalled();
+  });
+
   // limpia pruebas para evitar que las llamadas anteriores no afecten a la siguiente
   it("rechaza el registro si el cliente envía un rol", async () => {
     // definimos que queremos ejecutar
     const respuesta = await request(app).post("/api/auth/register").send({
+      displayName: "Ana",
       email: "adminnuevo@email.com",
       password: "secreta123",
       role: "ADMIN",

@@ -26,7 +26,7 @@ Organiza «Tus partidas» para distinguir salas en espera, partidas en curso y f
 - En una sala en espera se ve el código de invitación, se puede copiar y se sabe quién falta por entrar o confirmar. El creador puede recuperar el código al volver a la sala: no dependas solo de la respuesta de creación guardada en memoria.
 - Indica los dos participantes y sus confirmaciones. Usa textos como «Prepararme», «Esperando a tu rival» y «Ambos preparados» en lugar de presentar el primer clic como si la partida ya estuviera activa.
 - La acción de eliminar solo se ofrece al creador y únicamente mientras la sala esté en espera. El backend mantiene esa autorización y el borrado atómico aunque alguien fabrique una petición.
-- Si el creador elimina una sala que el rival tiene abierta, el rival puede volver al listado con un mensaje claro. Un 404 posterior no debe dejar una pantalla bloqueada ni provocar reintentos infinitos. Puede resolverse con el contrato de eventos existente o uno pequeño documentado.
+- Si el creador elimina una sala que el rival tiene abierta, el backend emite `game:deleted` a `game:${gameId}` después de confirmar el borrado. El payload es `{ id: number }`. El rival debe dejar de consultar esa partida, mostrar un mensaje claro y volver al listado. Un `404` posterior (por ejemplo, tras estar desconectado) debe provocar la misma salida, sin bloquear la pantalla ni reintentar infinitamente. Limpia el listener de Socket.IO al salir de la vista.
 - No pierdas de vista las partidas antiguas por mostrar solo la primera página: añade navegación de páginas y conserva filtros/sección al actualizar cuando sea posible.
 
 ### 3. Turnos y respuestas con información útil
@@ -56,9 +56,9 @@ Prueba con dos cuentas en perfiles de navegador diferentes. Si se usan túneles,
 
 ## Comprueba tu entrega
 
-- [ ] Un usuario nuevo se registra con nombre válido; nombres vacíos, fuera de longitud o entradas de tipo incorrecto dan 400 en la API. Dos nombres iguales no mezclan identidades.
-- [ ] Los usuarios anteriores siguen pudiendo iniciar sesión y conservan sus partidas, respuestas y puntos después de la migración. El nombre inicial se puede cambiar.
-- [ ] Cambiar el nombre solo modifica el perfil autenticado; enviar `role`, un ID ajeno u otros campos no permite modificar privilegios ni otra cuenta.
+- [x] Un usuario nuevo se registra con nombre válido; nombres vacíos, fuera de longitud o entradas de tipo incorrecto dan 400 en la API. Dos nombres iguales no mezclan identidades.
+- [x] Los usuarios anteriores siguen pudiendo iniciar sesión y conservan sus partidas, respuestas y puntos después de la migración. El nombre inicial se puede cambiar.
+- [x] Cambiar el nombre solo modifica el perfil autenticado; enviar `role`, un ID ajeno u otros campos no permite modificar privilegios ni otra cuenta.
 - [ ] Sala y resultado muestran nombres y «Tú» sin publicar emails del rival, contraseñas ni hashes.
 - [ ] Las tarjetas distinguen espera, juego y finalización; carga, vacío, error y paginación tienen una presentación útil.
 - [ ] Al volver a una sala en espera se recupera su código y se puede copiar. Se ve quién entró y quién confirmó; no se inicia hasta que ambos confirman.
@@ -86,13 +86,14 @@ Enseña dos cuentas con nombres distintos: crear sala, copiar código, entrar, c
 
 Estado: **Pendiente**. Los checks son autoevaluación; el tutor confirma el cierre.
 
-- PR y commits de backend/frontend: pendiente.
-- Migración ensayada y datos conservados: pendiente.
-- Pruebas automatizadas y comandos por repo: pendiente.
-- Prueba con dos cuentas (ganador/perdedor y empate): pendiente.
-- Prueba de fallo, reconexión y sala eliminada: pendiente.
-- Orígenes locales/túneles utilizados y resultados CORS: pendiente.
-- Dudas o limitaciones conocidas: pendiente.
+- PR y commits de backend/frontend: backend en la rama `reto/20b-jugabilidad`, con el commit `666ed97` («feat: add public player names and game room contracts»). Quedan por crear/enlazar el PR hacia `develop` y el PR del frontend.
+- Migración ensayada y datos conservados: ensayo completado en `trivia_test_legacy_20b`, una base local aislada creada con el esquema anterior. Se insertaron usuario con hash Argon2, partida, participante, respuesta y puntuación; Prisma aplicó `20261102103820_add_user_display_name`. Se comprobó login, nombre inicial `Jugador 1`, cambio de nombre y conservación de IDs, relaciones, respuesta y puntuación.
+- Pruebas automatizadas y comandos por repo: backend comprobado el 03/11/2026 con `npm.cmd run typecheck`, `npm.cmd test` (119 superadas, 1 omitida), `npm.cmd run build` y `npm.cmd run test:integration` (30/30 superadas). Tras añadir `game:deleted`, también pasaron `npm.cmd run typecheck` y `npm.cmd test -- --run tests/sockets/socket.integration.test.ts` (8/8). Pendiente ejecutar y registrar los comandos equivalentes del frontend.
+- Mejora opcional aplicada: `displayNameSchema` compartido por registro y perfil, sin cambiar las reglas ni los mensajes de validación.
+- Prueba con dos cuentas (ganador/perdedor y empate): pendiente de realizar desde el frontend.
+- Prueba de fallo, reconexión y sala eliminada: la recuperación y permisos están cubiertos por integración del backend. La suite Socket.IO confirma que dos participantes unidos reciben `game:deleted`; falta la prueba visual conjunta de aviso, redirección, reconexión y tratamiento del `404` en frontend.
+- Orígenes locales/túneles utilizados y resultados CORS: pruebas locales con `FRONTEND_ORIGIN=http://localhost:5173` en el entorno aislado. Pendiente comprobar el frontend y, si se usa, documentar el origen de un túnel.
+- Dudas o limitaciones conocidas: en este equipo `npm run seed` falla dentro de `tsx` por un error temporal de memoria de Windows; tras compilar, `node dist/lib/seed.js` cargó correctamente el catálogo en `trivia_test`. No afecta a las suites ya aprobadas.
 - Revisión, aprobación y merges del tutor: pendiente.
 
 [Volver al README](../README.md) · [Reto 20](20-frontend.md) · [Reto 21](21-despliegue.md)

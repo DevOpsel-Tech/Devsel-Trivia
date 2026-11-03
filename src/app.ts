@@ -35,7 +35,7 @@ app.use(
       callback(null, isAllowedFrontendOrigin(origin) ? origin : false);
     },
     credentials: true,
-  })
+  }),
 );
 
 // Muestra la documentación de la API en /docs usando Swagger UI.
@@ -712,7 +712,7 @@ app.use("/api/auth", authRouter);
  *           application/json:
  *             schema:
  *               $ref: "#/components/schemas/Error"
-  * /api/games/{id}/start:
+ * /api/games/{id}/start:
  *   post:
  *     summary: Confirmar que un jugador está preparado para iniciar
  *     description: >
@@ -972,6 +972,45 @@ app.use("/api/me", meRouter);
  *           application/json:
  *             schema:
  *               $ref: "#/components/schemas/Error"
+ *   patch:
+ *     summary: Cambiar el nombre del usuario autenticado
+ *     description: Actualiza solo el displayName de la cuenta identificada por el JWT. No permite cambiar ID, email, rol ni puntuación.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: "#/components/schemas/ActualizarPerfilEntrada"
+ *           example:
+ *             displayName: "Ana"
+ *     responses:
+ *       200:
+ *         description: Perfil actualizado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   $ref: "#/components/schemas/UsuarioAutenticado"
+ *       400:
+ *         description: Nombre inválido o cuerpo con campos no permitidos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *             example:
+ *               error:
+ *                 code: VALIDATION_ERROR
+ *                 message: Los datos enviados no son válidos
+ *       401:
+ *         description: Token ausente, inválido o caducado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
  */
 app.get("/api/me", authMiddleware, meController);
 
@@ -980,7 +1019,11 @@ app.get("/api/me", authMiddleware, meController);
  * /api/me/games:
  *   get:
  *     summary: Historial de partidas del usuario autenticado
- *     description: Devuelve las partidas en las que participa el usuario autenticado, de la más reciente a la más antigua, con id, estado, fechas y puntuación.
+ *     description: |
+ *       Devuelve las partidas del usuario autenticado, de la más reciente a la más antigua.
+ *       Cada tarjeta incluye modo, estado, fechas, código de sala, participantes con nombre público,
+ *       puntuación propia, puntuaciones públicas visibles y resultado final cuando existe.
+ *       En multijugador, ninguna puntuación incluye una ronda pendiente de respuesta del rival.
  *     security:
  *       - bearerAuth: []
  *     parameters:

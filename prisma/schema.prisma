@@ -46,6 +46,8 @@ enum Role {
 model user {
   id           Int          @id @default(autoincrement())
   email        String       @unique
+  // Nombre público; no es credencial y puede repetirse entre usuarios.
+  displayName  String
   passwordHash String
   createdAt    DateTime     @default(now())
   role         Role         @default(USER)

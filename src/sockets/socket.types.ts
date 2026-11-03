@@ -14,6 +14,7 @@ export interface ServerToClientEvents {
   "joined:game": (payload: { gameId: number }) => void;
   "error:game": (payload: { message: string }) => void;
   "game:updated": (payload: { id: number; status: string; turnVersion: number }) => void;
+  "game:deleted": (payload: { id: number }) => void;
 }
 
 export type AppSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;

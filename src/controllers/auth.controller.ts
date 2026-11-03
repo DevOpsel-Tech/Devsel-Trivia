@@ -5,3 +5,4 @@
 export { registerController } from "./auth.register.js";
 export { loginController } from "./auth.login.js";
 export { meController } from "./auth.me.js";
+export { updateMeController } from "./auth.me.js";

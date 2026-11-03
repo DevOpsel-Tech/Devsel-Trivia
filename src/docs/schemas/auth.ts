@@ -8,6 +8,14 @@ export const authSchemas = {
     type: "object",
     additionalProperties: false,
     properties: {
+      displayName: {
+        type: "string",
+        minLength: 2,
+        maxLength: 30,
+        description:
+          "Nombre público. Se eliminan los espacios exteriores; no es único ni se usa para iniciar sesión.",
+        example: "Ana",
+      },
       email: {
         type: "string",
         format: "email",
@@ -24,7 +32,23 @@ export const authSchemas = {
         example: "secreta123",
       },
     },
-    required: ["email", "password"],
+    required: ["displayName", "email", "password"],
+  },
+  // Cuerpo permitido al editar el perfil propio con PATCH /api/me.
+  ActualizarPerfilEntrada: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      displayName: {
+        type: "string",
+        minLength: 2,
+        maxLength: 30,
+        description:
+          "Nombre público. Se eliminan los espacios exteriores; no permite cambiar email, rol ni identidad.",
+        example: "Ana",
+      },
+    },
+    required: ["displayName"],
   },
   // Representa los datos públicos que se devuelven al registrarse.
   UsuarioPublico: {
@@ -38,8 +62,12 @@ export const authSchemas = {
         type: "string",
         example: "juan@email.com",
       },
+      displayName: {
+        type: "string",
+        example: "Ana",
+      },
     },
-    required: ["id", "email"],
+    required: ["id", "email", "displayName"],
   },
 
   // Datos que puede consultar el propio usuario autenticado.
@@ -55,12 +83,16 @@ export const authSchemas = {
         type: "string",
         example: "juan@email.com",
       },
+      displayName: {
+        type: "string",
+        example: "Ana",
+      },
       role: {
         type: "string",
         enum: ["USER", "ADMIN"],
         example: "USER",
       },
     },
-    required: ["id", "email", "role"],
+    required: ["id", "email", "displayName", "role"],
   },
 };

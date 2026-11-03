@@ -859,14 +859,19 @@ Un JWT tiene tres partes: cabecera, contenido y firma.
 
 ## 20B · Dale claridad a la experiencia de juego
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Migración y contratos entre frontend/backend: pendiente.
-- Pruebas con dos cuentas, resultado y empate: pendiente.
-- Pruebas de errores, reconexión y CORS: pendiente.
-- Comandos y resultados por repositorio: pendiente.
-- Dudas: pendiente.
-- PR enlazados, correcciones y revisión: pendiente.
+- Lo que he construido (backend): añadí `displayName` al usuario, obligatorio en el registro (2–30 caracteres tras recortar espacios), y el perfil autenticado `GET/PATCH /api/me`. El `PATCH` solo acepta el nombre propio; no permite cambiar ID, rol, email ni puntuación.
+- Mejora opcional: extraje `displayNameSchema` en `src/schemas/display-name.schema.ts`. Registro y edición de perfil lo reutilizan, por lo que el recorte de espacios, la longitud y los mensajes de validación se mantienen en un único lugar.
+- Contratos: login, perfil, detalle de partida e historial devuelven nombres públicos. En multijugador, participantes incluyen `userId`, `displayName`, `turnOrder`, `isCreator`, `isReady` y puntuación pública. El detalle y el historial incluyen `winnerUserId` e `isDraw` para que el frontend presente victoria, derrota o empate sin calcularlo. Para partidas históricas sin `winnerUserId`, ambos contratos usan la misma puntuación revelada para recuperar el ganador; un valor nulo solo significa empate si los puntos empatan.
+- Migración: `20261102103820_add_user_display_name` agrega primero una columna opcional, asigna `Jugador <id>` a cuentas existentes y después la hace obligatoria; así conserva usuarios y sus relaciones. El 03/11/2026 ensayé la migración con Prisma en la base local aislada `trivia_test_legacy_20b`, partiendo del esquema anterior y de una fixture con usuario Argon2, partida, participante, respuesta correcta y puntuación. Después de migrar, el usuario inició sesión, recibió `Jugador 1`, cambió su nombre y conservó ID, partida, relaciones, respuesta y puntuación.
+- Privacidad y puntuación: no se exponen emails ni hashes del rival. La puntuación del primer jugador permanece oculta mientras la ronda está pendiente; al responder ambos se publica la ronda cerrada.
+- Sala eliminada: después de que `DELETE /api/games/:id` confirme el borrado de una sala `WAITING`, el backend emite `game:deleted` con `{ id }` a `game:${gameId}`. Aunque el borrado en cascada elimine `GamePlayer`, los sockets que ya estaban unidos a esa sala reciben el aviso. El evento está tipado y documentado; no incluye datos sensibles.
+- Comportamiento del frontend pendiente: al recibir `game:deleted` para la partida abierta debe desuscribir su listener, mostrar «El creador ha eliminado la sala» y volver a «Mis partidas». Si estaba desconectado, el `GET /api/games/:id` devolverá `404` y debe ejecutar la misma salida sin reintentos infinitos.
+- Pruebas automatizadas: `npm.cmd run typecheck`, `npm.cmd test` (119 superadas, 1 omitida), `npm.cmd run build` y `npm.cmd run test:integration` (30/30 superadas) completadas el 03/11/2026.
+- Verificación del aviso de borrado: `npm.cmd run typecheck` y `npm.cmd test -- --run tests/sockets/socket.integration.test.ts` correctos; la suite de Socket.IO tiene 8 pruebas, incluida la recepción de `game:deleted` por dos participantes conectados.
+- Base de pruebas: configuré PostgreSQL local con una base aislada llamada `trivia_test`, a la que se aplicaron las 9 migraciones. El entorno `tests/.env.test`, ignorado por Git, contiene `DATABASE_URL`, `JWT_SECRET` y `FRONTEND_ORIGIN`; no se usan bases de Railway ni producción para pruebas destructivas.
+- Correcciones durante la prueba: actualicé expectativas de integración que aún esperaban el contrato anterior, sin `displayName`, `isCreator` ni `isReady`, y que no consideraban pública la puntuación tras cerrar una ronda. Añadí una regresión para una partida histórica 1–0 sin `winnerUserId`, que confirma que historial y detalle devuelven el mismo ganador, y mantuve el empate real. El seed con `tsx` falló en este equipo con un error temporal de memoria de Windows; tras compilar, `node dist/lib/seed.js` cargó las preguntas en `trivia_test` correctamente.
+- Pendiente de frontend: mostrar nombres y «Tú», organizar el historial por estado y paginarlo, recuperar/copiar el código de sala, enseñar confirmaciones, estado de turno/progreso, bloqueo de envíos, escuchar y limpiar `game:deleted`, y la pantalla final de ganar/perder/empate.
+- Pendiente de validación conjunta: recorrido visual con dos cuentas (victoria, derrota, empate, reconexión y sala eliminada), capturas/evidencias, y PRs enlazados de frontend y backend hacia `develop`.
 
 ## 21 · Despliega backend, DB y frontend
 

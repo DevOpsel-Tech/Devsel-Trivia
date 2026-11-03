@@ -48,6 +48,7 @@ export async function loginController(req: Request, res: Response) {
     user: {
       id: usuario.id,
       email: usuario.email,
+      displayName: usuario.displayName,
     },
   });
 }

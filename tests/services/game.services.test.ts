@@ -34,6 +34,9 @@ type JugadorFake = {
   userId: number;
   turnOrder: number;
   score: number;
+  isReady: boolean;
+  isCreator: boolean;
+  user: { displayName: string };
 };
 
 type PartidaFake = {
@@ -80,10 +83,33 @@ function crearPartida(mode: PartidaFake["mode"] = "INDIVIDUAL"): PartidaFake {
     players:
       mode === "MULTIPLAYER"
         ? [
-            { userId: 1, turnOrder: 1, score: 0 },
-            { userId: 2, turnOrder: 2, score: 0 },
+            {
+              userId: 1,
+              turnOrder: 1,
+              score: 0,
+              isReady: false,
+              isCreator: true,
+              user: { displayName: "Ana" },
+            },
+            {
+              userId: 2,
+              turnOrder: 2,
+              score: 0,
+              isReady: false,
+              isCreator: false,
+              user: { displayName: "Luis" },
+            },
           ]
-        : [{ userId: 1, turnOrder: 1, score: 0 }],
+        : [
+            {
+              userId: 1,
+              turnOrder: 1,
+              score: 0,
+              isReady: false,
+              isCreator: true,
+              user: { displayName: "Ana" },
+            },
+          ],
     questions,
     choices,
     p2002: false,
@@ -487,8 +513,22 @@ describe("getGameById", () => {
 
     expect(pendiente!.score).toBe(0); // el score de P2 no incluye la ronda abierta
     expect(pendiente!.players).toEqual([
-      { userId: 1, turnOrder: 1, score: 0 }, // tampoco se publica el punto de P1
-      { userId: 2, turnOrder: 2, score: 0 },
+      {
+        userId: 1,
+        displayName: "Ana",
+        turnOrder: 1,
+        isCreator: true,
+        isReady: false,
+        score: 0,
+      }, // tampoco se publica el punto de P1
+      {
+        userId: 2,
+        displayName: "Luis",
+        turnOrder: 2,
+        isCreator: false,
+        isReady: false,
+        score: 0,
+      },
     ]);
     expect(pendiente!.currentTurn).toEqual({
       userId: 2,
@@ -511,8 +551,22 @@ describe("getGameById", () => {
     const revelada = await getGameById(7, 2);
 
     expect(revelada!.players).toEqual([
-      { userId: 1, turnOrder: 1, score: 1 },
-      { userId: 2, turnOrder: 2, score: 0 },
+      {
+        userId: 1,
+        displayName: "Ana",
+        turnOrder: 1,
+        isCreator: true,
+        isReady: false,
+        score: 1,
+      },
+      {
+        userId: 2,
+        displayName: "Luis",
+        turnOrder: 2,
+        isCreator: false,
+        isReady: false,
+        score: 0,
+      },
     ]);
     expect(revelada!.questions[0]).toMatchObject({
       answered: true,

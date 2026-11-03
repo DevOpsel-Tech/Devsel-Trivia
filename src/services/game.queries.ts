@@ -40,7 +40,18 @@ export async function getGameById(gameId: number, userId?: number) {
     include: {
       // Participantes con su orden de turno y puntuaciónn persistida.
       players: {
-        select: { userId: true, turnOrder: true, score: true, isReady: true },
+        select: {
+          userId: true,
+          turnOrder: true,
+          score: true,
+          isReady: true,
+          isCreator: true,
+          user: {
+            select: {
+              displayName: true, // Solo identidad pública; nunca email ni hash.
+            },
+          },
+        },
         orderBy: { turnOrder: "asc" },
       },
       // Las 5 preguntas en orden de juego (posición de 0..4), con sus opciones
@@ -110,7 +121,9 @@ export async function getGameById(gameId: number, userId?: number) {
 
   const players = game.players.map((player) => ({
     userId: player.userId,
+    displayName: player.user.displayName,
     turnOrder: player.turnOrder,
+    isCreator: player.isCreator,
     isReady: player.isReady,
     // En individual la puntuación guardada es la verdad; en multijugador se
     // publica la revelada hasta que la partida termina.
@@ -144,7 +157,9 @@ export async function getGameById(gameId: number, userId?: number) {
   // En individual se conserva el score del único jugador. En multijugador el
   // score superior es el del usuario autenticado, siempre que ya sea revelable.
   const scoreIndividual = esMultijugador
-    ? (userId !== undefined ? (scoreRevelado.get(userId) ?? 0) : 0)
+    ? userId !== undefined
+      ? (scoreRevelado.get(userId) ?? 0)
+      : 0
     : (game.players.find((player) => player.userId === userId)?.score ??
       game.players[0]?.score ??
       game.questions.reduce(
@@ -153,10 +168,12 @@ export async function getGameById(gameId: number, userId?: number) {
         0,
       ));
 
-  const ganador =
-    esMultijugador && game.status === "FINISHED"
-      ? (game.winnerUserId ?? calcularGanador(players))
-      : null;
+  const resultado = resolverResultadoMultijugador(
+    game.mode,
+    game.status,
+    game.winnerUserId,
+    players,
+  );
 
   return {
     ...game,
@@ -165,10 +182,27 @@ export async function getGameById(gameId: number, userId?: number) {
     score: scoreIndividual,
     nextQuestionId,
     currentTurn,
-    winnerUserId: ganador,
-    isDraw:
-      esMultijugador && game.status === "FINISHED" && ganador === null,
+    winnerUserId: resultado.winnerUserId,
+    isDraw: resultado.isDraw,
   };
+}
+
+/* Un resultado guardado es la fuente de verdad para partidas nuevas. Las
+   partidas anteriores al campo winnerUserId pueden tenerlo a null aun sin ser
+   empate: en ese caso usamos las puntuaciones ya reveladas. Detalle e
+   historial llaman a esta misma función para no discrepar. */
+function resolverResultadoMultijugador(
+  mode: "INDIVIDUAL" | "MULTIPLAYER",
+  status: "WAITING" | "ACTIVE" | "FINISHED",
+  winnerUserId: number | null,
+  players: { userId: number; score: number }[],
+) {
+  if (mode !== "MULTIPLAYER" || status !== "FINISHED") {
+    return { winnerUserId: null, isDraw: false };
+  }
+
+  const winner = winnerUserId ?? calcularGanador(players);
+  return { winnerUserId: winner, isDraw: winner === null };
 }
 
 /* Ganador de una partida ya cerrada; null cuando hay empate. */
@@ -222,10 +256,14 @@ function contarAciertosVisibles(
   }, 0);
 }
 
-export async function getMyGames(userId: number, page: number, pageSize: number) {
+export async function getMyGames(
+  userId: number,
+  page: number,
+  pageSize: number,
+) {
   const where = { players: { some: { userId } } };
 
-    const [partidas, total] = await Promise.all([
+  const [partidas, total] = await Promise.all([
     prisma.game.findMany({
       where,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }], // orden estable (desempate por id)
@@ -233,6 +271,8 @@ export async function getMyGames(userId: number, page: number, pageSize: number)
       take: pageSize,
       select: {
         id: true,
+        code: true,
+        winnerUserId: true,
         status: true,
         createdAt: true,
         finishedAt: true,
@@ -249,19 +289,59 @@ export async function getMyGames(userId: number, page: number, pageSize: number)
             answers: { select: { userId: true, isCorrect: true } },
           },
         },
+        players: {
+          select: {
+            userId: true,
+            turnOrder: true,
+            isCreator: true,
+            isReady: true,
+            user: {
+              select: {
+                displayName: true, // Identidad pública; nunca email.
+              },
+            },
+          },
+          orderBy: { turnOrder: "asc" },
+        },
       },
     }),
     prisma.game.count({ where }),
   ]);
 
-  const items = partidas.map((partida) => ({
-    id: partida.id,
-    status: partida.status,
-    createdAt: partida.createdAt,
-    finishedAt: partida.finishedAt,
-    score: contarAciertosVisibles(partida, userId),
-  }));
+  const items = partidas.map((partida) => {
+    const players = partida.players.map((player) => ({
+      userId: player.userId,
+      displayName: player.user.displayName,
+      turnOrder: player.turnOrder,
+      isCreator: player.isCreator,
+      isReady: player.isReady,
+      score: contarAciertosVisibles(partida, player.userId),
+    }));
+    const resultado = resolverResultadoMultijugador(
+      partida.mode,
+      partida.status,
+      partida.winnerUserId,
+      players,
+    );
 
+    return {
+      id: partida.id,
+      mode: partida.mode,
+      status: partida.status,
+      code: partida.code, // null en individual; permite recuperar una sala WAITING.
+      createdAt: partida.createdAt,
+      finishedAt: partida.finishedAt,
+
+      // Puntos propios: no suma los puntos del rival.
+      score: contarAciertosVisibles(partida, userId),
+
+      // Puntos públicos: solo rondas cerradas; nunca delatan el acierto pendiente.
+      players,
+
+      // El backend persiste y decide el resultado; el frontend solo lo presenta.
+      winnerUserId: resultado.winnerUserId,
+      isDraw: resultado.isDraw,
+    };
+  });
   return { items, total, page, pageSize };
 }
-

@@ -50,6 +50,7 @@ beforeEach(async () => {
     data: {
       email: `creador-${Date.now()}-${Math.random()}@test.com`,
       passwordHash: "x",
+      displayName: "Creador",
     },
   });
   idsUsuarios.push(creador.id);
@@ -59,6 +60,7 @@ beforeEach(async () => {
     data: {
       email: `jugadorb-${Date.now()}-${Math.random()}@test.com`,
       passwordHash: "x",
+      displayName: "Jugador B",
     },
   });
   idsUsuarios.push(jugadorB.id);
@@ -68,6 +70,7 @@ beforeEach(async () => {
     data: {
       email: `jugadorc-${Date.now()}-${Math.random()}@test.com`,
       passwordHash: "x",
+      displayName: "Jugador C",
     },
   });
   idsUsuarios.push(jugadorC.id);

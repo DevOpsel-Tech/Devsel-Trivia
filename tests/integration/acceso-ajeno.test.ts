@@ -64,11 +64,20 @@ async function limpiarBaseDeDatos() {
 /* Crea dos usuarios y una partida que pertenece SOLO al usuario A.
    Devuelve los ids para montar tokens. */
 async function escenarioDosUsuarios() {
-  const usuarioA = await prisma.user.create({
-    data: { email: "a@test.com", passwordHash: "x" },
+   const usuarioA = await prisma.user.create({
+    data: {
+      email: "a@test.com",
+      passwordHash: "x",
+      displayName: "Ana",
+    },
   });
+
   const usuarioB = await prisma.user.create({
-    data: { email: "b@test.com", passwordHash: "x" },
+    data: {
+      email: "b@test.com",
+      passwordHash: "x",
+      displayName: "Luis",
+    },
   });
   idsUsuarios.push(usuarioA.id, usuarioB.id);
 
