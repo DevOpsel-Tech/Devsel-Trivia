@@ -48,6 +48,20 @@ export type CreatedMultiplayerGame = {
   code: string;
 };
 
+// Datos que devuelve POST /api/games al crear una partida individual.
+export type CreatedIndividualGame = {
+  id: number;
+  status: "ACTIVE";
+};
+
+export function createIndividualGame(token: string) {
+  return apiRequest<CreatedIndividualGame>("/api/games", {
+    method: "POST",
+    token,
+    body: { mode: "INDIVIDUAL" },
+  });
+}
+
 // Crea una sola y envía  el token para auteticar la petición.
 export function createMultiplayerGame(token: string) {
   return apiRequest<CreatedMultiplayerGame>("/api/games", {
@@ -71,43 +85,46 @@ export function deleteWaitingGame(token: string, gameId: number) {
   });
 }
 
+export type GameQuestion = {
+  id: number;
+  position: number;
+  statement: string;
+  answered: boolean;
+  // Solo se devuelven en multijugador.
+  answeredCount?: number;
+  revealed?: boolean;
+  results?: {
+    userId: number;
+    isCorrect: boolean;
+  }[] | null;
+  choices: {
+    id: number;
+    text: string;
+    position: number;
+  }[];
+};
+
+// GET /api/games/:id comparte estos campos entre partidas individuales y
+// multijugador. Los campos de sala solo existen en MULTIPLAYER.
 export type GameDetails = {
   id: number;
   status: "WAITING" | "ACTIVE" | "FINISHED";
-  mode: "MULTIPLAYER";
-  code: string | null;
+  mode?: "INDIVIDUAL" | "MULTIPLAYER";
   turnVersion: number; //Incrementa cada vez que un jugador responde o se une a la partida.
   createdAt: string; //ISO 8601
   finishedAt: string | null; //ISO 8601
   score: number; //Puntuación única no revela una ronda incompleta.
   nextQuestionId: number | null; // null si no hay más preguntas
-  players: GamePlayer[];
-  winnerUserId: number | null; //null si no hay ganador
-  isDraw: boolean; //true si hay empate
-  currentTurn: {
+  code?: string | null;
+  players?: GamePlayer[];
+  winnerUserId?: number | null; //null si no hay ganador
+  isDraw?: boolean; //true si hay empate
+  currentTurn?: {
     userId: number;
     turnOrder: number;
     gameQuestionId: number;
   } | null;
-  questions: {
-    id: number;
-    position: number;
-    statement: string;
-    answered: boolean;
-    answeredCount: number;
-    revealed: boolean;
-    results:
-      | {
-          userId: number;
-          isCorrect: boolean;
-        }[]
-      | null;
-    choices: {
-      id: number;
-      text: string;
-      position: number;
-    }[];
-  }[];
+  questions: GameQuestion[];
 };
 export function getGame(token: string, gameId: number) {
   return apiRequest<GameDetails>(`/api/games/${gameId}`, { token });

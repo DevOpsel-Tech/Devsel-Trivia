@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { ApiError } from "../api/http";
 import { env } from "../config/env";
+import { GameParticipants } from "./GameParticipants";
+import { GameResult } from "./GameResult";
+import { GameScoreboard } from "./GameScoreboard";
 import {
   getGame,
   startMultiplayerGame,
@@ -16,6 +19,9 @@ type GameRoomProps = {
   onAuthenticationError: () => void;
 };
 
+// Evento privado que emite el backend a los participantes de una sala borrada.
+type GameDeletedEvent = { id: number };
+
 export function GameRoom({
   gameId,
   token,
@@ -26,6 +32,7 @@ export function GameRoom({
   const [game, setGame] = useState<GameDetails | null>(null);
   // Impide que una respuesta HTTP más antigua reemplace un estado más reciente.
   const latestTurnVersion = useRef(-1);
+  const deletedRoomTimeoutRef = useRef<number | null>(null);
   const [error, setError] = useState("");
   const [isStarting, setIsStarting] = useState(false);
   const [selectedChoiceId, setSelectedChoiceId] = useState<number | null>(null);
@@ -33,6 +40,27 @@ export function GameRoom({
   const [socketNotice, setSocketNotice] = useState("");
   // Evita pulsar varias veces mientras recuperamos el estado de la partida.
   const [isRefreshingGame, setIsRefreshingGame] = useState(false);
+
+  const returnAfterRoomDeleted = useCallback(() => {
+    setError("El creador ha eliminado la sala. Volviendo a tus partidas…");
+
+    // El evento Socket.IO y un GET posterior pueden llegar casi a la vez.
+    // Programamos una única vuelta al listado.
+    if (deletedRoomTimeoutRef.current !== null) return;
+
+    deletedRoomTimeoutRef.current = window.setTimeout(() => {
+      deletedRoomTimeoutRef.current = null;
+      onBack();
+    }, 1200);
+  }, [onBack]);
+
+  useEffect(() => {
+    return () => {
+      if (deletedRoomTimeoutRef.current !== null) {
+        window.clearTimeout(deletedRoomTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const loadGame = useCallback(async () => {
     try {
@@ -50,10 +78,7 @@ export function GameRoom({
       }
 
       if (requestError instanceof ApiError && requestError.status === 404) {
-        setError(
-          "Esta sala fue eliminada por su creador. Volviendo a tus partidas…",
-        );
-        window.setTimeout(onBack, 1200);
+        returnAfterRoomDeleted();
         return;
       }
 
@@ -70,7 +95,7 @@ export function GameRoom({
           : "No se pudo cargar la partida.",
       );
     }
-  }, [gameId, onAuthenticationError, onBack, token]);
+  }, [gameId, onAuthenticationError, returnAfterRoomDeleted, token]);
   /* Recupera el snapshop persistido del backend tras un error
   LoadGame y atrata 401, 404, conexión y mensajes de API */
 
@@ -151,9 +176,18 @@ export function GameRoom({
     });
 
     socket.on("disconnect", (reason) => {
-      if (reason !== "io client disconnect") {
-        setSocketNotice("Se ha perdido la conexión. Reintentando conectar…");
+      // El backend fuerza esta desconexión cuando vence el JWT. Socket.IO no
+      // reintenta automáticamente una desconexión ordenada por el servidor.
+      if (reason === "io server disconnect") {
+        onAuthenticationError();
+        return;
       }
+
+      // Una desconexión iniciada por el desmontaje del componente no requiere aviso.
+      if (reason === "io client disconnect") return;
+
+      // El resto son cortes temporales (red, transporte o servidor reiniciando).
+      setSocketNotice("Se ha perdido la conexión. Reintentando conectar…");
     });
 
     socket.on("joined:game", () => {
@@ -174,10 +208,18 @@ export function GameRoom({
       setError(message);
     });
 
+    function onGameDeleted({ id }: GameDeletedEvent) {
+      if (id !== gameId) return;
+      returnAfterRoomDeleted();
+    }
+
+    socket.on("game:deleted", onGameDeleted);
+
     return () => {
+      socket.off("game:deleted", onGameDeleted);
       socket.disconnect();
     };
-  }, [gameId, loadGame, onAuthenticationError, token]);
+  }, [gameId, loadGame, onAuthenticationError, returnAfterRoomDeleted, token]);
 
   /* Añadimos la acción de iniciar la sala, el bcak decide si el usuario puede hacerlo
 si o es creador o falta un jugador, muestra error*/
@@ -204,20 +246,26 @@ si o es creador o falta un jugador, muestra error*/
     }
   }
 
+  const isMultiplayer = game?.mode === "MULTIPLAYER";
+  // En individual no hay currentTurn: nextQuestionId identifica la pregunta propia.
+  const currentQuestionId = isMultiplayer
+    ? game?.currentTurn?.gameQuestionId
+    : game?.nextQuestionId;
   const currentQuestion = game?.questions.find(
-    (question) => question.id === game.currentTurn?.gameQuestionId,
+    (question) => question.id === currentQuestionId,
   );
   const totalQuestions = game?.questions.length ?? 0;
   const currentQuestionNumber = currentQuestion
     ? currentQuestion.position + 1
     : totalQuestions;
 
-  const isYourTurn = game?.currentTurn?.userId === userId;
-  const currentPlayer = game?.players.find(
+  const isYourTurn = isMultiplayer
+    ? game?.currentTurn?.userId === userId
+    : game?.status === "ACTIVE";
+  const currentPlayer = game?.players?.find(
     (player) => player.userId === userId,
   );
-  const opponent = game?.players.find((player) => player.userId !== userId);
-  const you = currentPlayer;
+  const opponent = game?.players?.find((player) => player.userId !== userId);
   const opponentName = opponent?.displayName ?? "tu rival";
 
   const finalMessage = game?.isDraw
@@ -300,17 +348,10 @@ si o es creador o falta un jugador, muestra error*/
 
       {game?.status === "WAITING" && (
         <div className="mt-6 space-y-4">
-          <div className="rounded-xl border border-[#2B2B2B] bg-[#0D0D0D] p-4 text-sm">
-            <p>
-              Tú ({you?.displayName ?? "Cargando…"}):{" "}
-              {you?.isReady ? "Preparado" : "Sin confirmar"}
-            </p>
-            <p className="mt-1 text-[#A3A3A3]">
-              {opponent
-                ? `${opponent.displayName}: ${opponent.isReady ? "Preparado" : "Sin confirmar"}`
-                : "Falta que entre tu rival."}
-            </p>
-          </div>
+          <GameParticipants
+            currentPlayer={currentPlayer}
+            opponent={opponent}
+          />
           {currentPlayer?.isReady ? (
             <p className="text-sm text-[#A3A3A3]" role="status">
               Esperando a tu rival.
@@ -330,24 +371,12 @@ si o es creador o falta un jugador, muestra error*/
         </div>
       )}
 
-      {game?.status === "ACTIVE" && (
-        <section className="mt-6 rounded-xl border border-[#2B2B2B] bg-[#0D0D0D] p-4">
-          <p className="text-xs font-bold tracking-wide text-[#A3A3A3]">
-            MARCADOR
-          </p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <p className="rounded-lg border border-[#A3E635]/40 bg-[#A3E635]/10 px-3 py-2 text-sm">
-              Tú ({you?.displayName ?? "Cargando…"}):{" "}
-              <strong>{you?.score ?? 0} puntos</strong>
-            </p>
-            <p className="rounded-lg border border-[#3D3D3D] px-3 py-2 text-sm text-[#D4D4D4]">
-              {opponentName}: <strong>{opponent?.score ?? 0} puntos</strong>
-            </p>
-          </div>
-          <p className="mt-3 text-xs text-[#A3A3A3]">
-            Solo se muestran los puntos de rondas ya cerradas por ambos jugadores.
-          </p>
-        </section>
+      {game?.status === "ACTIVE" && isMultiplayer && (
+        <GameScoreboard
+          currentPlayer={currentPlayer}
+          opponent={opponent}
+          opponentName={opponentName}
+        />
       )}
 
       {game?.status === "ACTIVE" && currentQuestion && isYourTurn && (
@@ -386,32 +415,22 @@ si o es creador o falta un jugador, muestra error*/
         </article>
       )}
 
-      {game?.status === "ACTIVE" && !isYourTurn && (
+      {game?.status === "ACTIVE" && isMultiplayer && !isYourTurn && (
         <p className="mt-6 text-center text-sm font-semibold text-[#A3A3A3]">
           Turno de {opponentName}. Esperando su respuesta…
         </p>
       )}
 
       {game?.status === "FINISHED" && (
-        <section
-          className="mt-6 rounded-xl border border-[#A3E635]/40 bg-[#A3E635]/10 p-5"
-          role="status"
-        >
-          <h3 className="text-xl font-black text-[#A3E635]">{finalMessage}</h3>
-          <p className="mt-3">
-            Tú ({you?.displayName}): <strong>{you?.score ?? 0} puntos</strong>
-          </p>
-          <p className="mt-1">
-            {opponentName}: <strong>{opponent?.score ?? 0} puntos</strong>
-          </p>
-          <button
-            type="button"
-            onClick={onBack}
-            className="mt-5 rounded-lg border border-[#A3E635] px-4 py-2 text-sm font-semibold text-[#A3E635]"
-          >
-            Volver a mis partidas
-          </button>
-        </section>
+        <GameResult
+          isMultiplayer={isMultiplayer}
+          finalMessage={finalMessage}
+          score={game.score}
+          currentPlayer={currentPlayer}
+          opponent={opponent}
+          opponentName={opponentName}
+          onBack={onBack}
+        />
       )}
     </section>
   );

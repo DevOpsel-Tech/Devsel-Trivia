@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import {
+  createIndividualGame,
   createMultiplayerGame,
   deleteWaitingGame,
   getMyGames,
@@ -51,6 +52,7 @@ export function GameLobby({
   const [reloadKey, setReloadKey] = useState(0);
   //Evitar crear varias salas mientras la petición está pendiente
   const [isCreating, setIsCreating] = useState(false);
+  const [isCreatingIndividual, setIsCreatingIndividual] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [isJoining, setIsJoining] = useState(false);
   const [deletingGameId, setDeletingGameId] = useState<number | null>(null);
@@ -168,6 +170,30 @@ export function GameLobby({
       setIsCreating(false);
     }
   }
+
+  async function handleCreateIndividualGame() {
+    setError("");
+    setIsCreatingIndividual(true);
+
+    try {
+      const game = await createIndividualGame(token);
+      // La partida individual nace activa, así que abrimos directamente su turno.
+      onOpenGame(game.id);
+    } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.status === 401) {
+        onAuthenticationError();
+        return;
+      }
+      setError(
+        requestError instanceof ApiError
+          ? requestError.message
+          : "No se pudo crear la partida individual.",
+      );
+    } finally {
+      setIsCreatingIndividual(false);
+    }
+  }
+
   async function handleJoinRoom() {
     setError("");
     setIsJoining(true);
@@ -314,6 +340,15 @@ export function GameLobby({
           className="mt-5 rounded-lg bg-[#A3E635] px-4 py-2 text-sm font-bold text-[#090909] disabled:cursor-wait disabled:opacity-60"
         >
           {isCreating ? "Creando sala…" : "Crear sala"}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleCreateIndividualGame}
+          disabled={isCreatingIndividual}
+          className="mt-5 rounded-lg border border-[#A3E635] px-4 py-2 text-sm font-bold text-[#A3E635] disabled:cursor-wait disabled:opacity-60"
+        >
+          {isCreatingIndividual ? "Creando partida…" : "Jugar en solitario"}
         </button>
 
         <button
