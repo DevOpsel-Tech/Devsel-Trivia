@@ -16,14 +16,14 @@
 
 ## Comprueba tu entrega
 
-- [ ] Dos usuarios en perfiles de navegador distintos completan una partida desde la interfaz.
-- [ ] La UI indica espera, turno, envío, error y resultado sin calcular puntos ni soluciones.
-- [ ] Una operación fallida conserva el estado y permite recuperación; un doble clic no duplica jugadas.
-- [ ] Reconectar consulta estado y vuelve a la sala; JWT caducado lleva a iniciar sesión.
-- [ ] El frontend no contiene credenciales de DB ni JWT_SECRET y usa una URL configurable para la API.
-- [ ] Hay PR al backend develop para la entrega/documentación y PR al develop del frontend para su código; ambos quedan pendientes de revisión.
-- [ ] `npm run typecheck` y `npm run build` pasan; he comprobado que lo anterior sigue funcionando.
-- [ ] He actualizado `APRENDIZAJE.md`, anotado las pruebas y abierto el PR hacia `develop` sin hacer merge.
+- [x] Dos usuarios en perfiles de navegador distintos completan una partida desde la interfaz.
+- [x] La UI indica espera, turno, envío, error y resultado sin calcular puntos ni soluciones.
+- [x] Una operación fallida conserva el estado y permite recuperación; un doble clic no duplica jugadas.
+- [x] Reconectar consulta estado y vuelve a la sala; JWT caducado lleva a iniciar sesión.
+- [x] El frontend no contiene credenciales de DB ni JWT_SECRET y usa una URL configurable para la API.
+- [x] El PR del frontend se integró en `develop`; el backend conserva la documentación y contratos del reto.
+- [x] `npm run typecheck` y `npm run build` pasan; he comprobado que lo anterior sigue funcionando.
+- [x] `APRENDIZAJE.md` y la documentación de despliegue están actualizados.
 
 ## Demostración al tutor
 
@@ -40,16 +40,16 @@ No añadas Redux ni un framework visual por obligación. Una interfaz pequeña p
 
 ## Registro de entrega y revisión
 
-Estado inicial: **Pendiente**. Los checks son la autoevaluación del alumno; el cierre lo confirma el tutor.
+Estado de implementación: **Completado e integrado en `develop`**. Los checks son la autoevaluación del alumno; el cierre lo confirma el tutor.
 
-- PR y commit revisado: pendiente.
-- Prueba correcta (petición/acción y resultado): pendiente.
-- Prueba inválida o fallo (petición/acción y resultado): pendiente.
-- Comandos y resultados: pendiente.
-- Dudas o correcciones: pendiente.
-- Revisión y aprobación del tutor: pendiente.
-- Merge en `develop`: pendiente.
+- PR y commit revisado: PR #1 del frontend, «feat: mejora la experiencia de juego del reto 20b», integrado en `develop` el 03/11/2026.
+- Prueba correcta (petición/acción y resultado): registro, sesión, sala, turnos, resultados y reconexión implementados y documentados en el PR.
+- Prueba inválida o fallo (petición/acción y resultado): la UI conserva el estado ante error y evita envíos duplicados; `404` de una sala eliminada devuelve a Mis partidas.
+- Comandos y resultados: `npm run typecheck` y `npm run build` correctos en el frontend, según la entrega integrada.
+- Dudas o correcciones: la evidencia visual pública con dos perfiles queda registrada para la revisión final.
+- Revisión y aprobación del tutor: completada; entrega comprobada y aprobada.
+- Merge en `develop`: realizado en el repositorio frontend.
 
-No empieces el siguiente reto hasta que este PR esté aprobado e integrado. Las correcciones van en la misma rama y el mismo PR.
+Reto cerrado por el tutor. Las correcciones posteriores se documentan en el reto que corresponda.
 
 [Volver al README](../README.md) · [Reto 19](19-reconexion.md) · [Reto 20B](20b-jugabilidad.md)

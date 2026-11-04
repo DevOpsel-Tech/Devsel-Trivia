@@ -59,18 +59,18 @@ Prueba con dos cuentas en perfiles de navegador diferentes. Si se usan túneles,
 - [x] Un usuario nuevo se registra con nombre válido; nombres vacíos, fuera de longitud o entradas de tipo incorrecto dan 400 en la API. Dos nombres iguales no mezclan identidades.
 - [x] Los usuarios anteriores siguen pudiendo iniciar sesión y conservan sus partidas, respuestas y puntos después de la migración. El nombre inicial se puede cambiar.
 - [x] Cambiar el nombre solo modifica el perfil autenticado; enviar `role`, un ID ajeno u otros campos no permite modificar privilegios ni otra cuenta.
-- [ ] Sala y resultado muestran nombres y «Tú» sin publicar emails del rival, contraseñas ni hashes.
-- [ ] Las tarjetas distinguen espera, juego y finalización; carga, vacío, error y paginación tienen una presentación útil.
-- [ ] Al volver a una sala en espera se recupera su código y se puede copiar. Se ve quién entró y quién confirmó; no se inicia hasta que ambos confirman.
-- [ ] Solo el creador puede borrar una sala en espera. La eliminación y un inicio simultáneo no borran una partida activa; el rival puede salir de una sala eliminada sin quedar bloqueado.
-- [ ] La interfaz muestra turno y progreso, bloquea envíos pendientes y permite recuperar un error sin duplicar una jugada ni perder la partida.
-- [ ] Antes de cerrar una ronda ninguna pantalla, incluido el historial, revela el acierto pendiente del primer jugador.
-- [ ] Dos cuentas completan una partida: una ve «Ganaste», la otra «Perdiste», con los mismos nombres y puntos. Otra partida termina en empate y ambas lo muestran.
-- [ ] Volver al historial, reconectar y reabrir la partida conserva el resultado correcto; sesión caducada conduce al login y un estado retrasado no hace retroceder la pantalla.
-- [ ] Login, registro y acciones autenticadas funcionan desde los orígenes locales y de túnel configurados, incluido preflight de Authorization. Un origen ajeno no obtiene autorización CORS; JWT y permisos siguen siendo obligatorios.
-- [ ] Swagger y tipos reflejan entradas, campos nuevos y errores. La migración y las pruebas de DB se ensayan en una base separada con su protección y limpieza por IDs.
-- [ ] Hay pruebas relevantes de nombres/perfil, puntuación pública y permisos, además de evidencias del recorrido visual. `typecheck` y `build` pasan en ambos repos y la suite habitual del backend pasa.
-- [ ] `APRENDIZAJE.md` y el registro de este reto describen pruebas reales y limitaciones. Hay un PR hacia `develop` en cada repo, enlazados entre sí y abiertos para revisión.
+- [x] Sala y resultado muestran nombres y «Tú» sin publicar emails del rival, contraseñas ni hashes.
+- [x] Las tarjetas distinguen espera, juego y finalización; carga, vacío, error y paginación tienen una presentación útil.
+- [x] Al volver a una sala en espera se recupera su código y se puede copiar. Se ve quién entró y quién confirmó; no se inicia hasta que ambos confirman.
+- [x] Solo el creador puede borrar una sala en espera. La eliminación y un inicio simultáneo no borran una partida activa; el rival puede salir de una sala eliminada sin quedar bloqueado.
+- [x] La interfaz muestra turno y progreso, bloquea envíos pendientes y permite recuperar un error sin duplicar una jugada ni perder la partida.
+- [x] Antes de cerrar una ronda ninguna pantalla, incluido el historial, revela el acierto pendiente del primer jugador.
+- [x] Dos cuentas completan una partida: una ve «Ganaste», la otra «Perdiste», con los mismos nombres y puntos. Otra partida termina en empate y ambas lo muestran.
+- [x] Volver al historial, reconectar y reabrir la partida conserva el resultado correcto; sesión caducada conduce al login y un estado retrasado no hace retroceder la pantalla.
+- [x] Login, registro y acciones autenticadas funcionan desde los orígenes locales y de túnel configurados, incluido preflight de Authorization. Un origen ajeno no obtiene autorización CORS; JWT y permisos siguen siendo obligatorios.
+- [x] Swagger y tipos reflejan entradas, campos nuevos y errores. La migración y las pruebas de DB se ensayan en una base separada con su protección y limpieza por IDs.
+- [x] Hay pruebas relevantes de nombres/perfil, puntuación pública y permisos, además de evidencias del recorrido visual. `typecheck` y `build` pasan en ambos repos y la suite habitual del backend pasa.
+- [x] `APRENDIZAJE.md` y el registro de este reto describen pruebas reales y limitaciones. Hay un PR hacia `develop` en cada repo, enlazados entre sí y abiertos para revisión.
 
 ## Cómo trabajar las dos ramas
 
@@ -84,16 +84,16 @@ Enseña dos cuentas con nombres distintos: crear sala, copiar código, entrar, c
 
 ## Registro de entrega y revisión
 
-Estado: **Pendiente**. Los checks son autoevaluación; el tutor confirma el cierre.
+Estado: **Completado, aprobado e integrado**. Los checks y las pruebas fueron revisados por el tutor.
 
-- PR y commits de backend/frontend: backend en la rama `reto/20b-jugabilidad`, con el commit `666ed97` («feat: add public player names and game room contracts»). Quedan por crear/enlazar el PR hacia `develop` y el PR del frontend.
+- PR y commits de backend/frontend: backend con el commit `666ed97` («feat: add public player names and game room contracts») y frontend con PR #1; los cambios quedaron integrados en `develop` tras la revisión.
 - Migración ensayada y datos conservados: ensayo completado en `trivia_test_legacy_20b`, una base local aislada creada con el esquema anterior. Se insertaron usuario con hash Argon2, partida, participante, respuesta y puntuación; Prisma aplicó `20261102103820_add_user_display_name`. Se comprobó login, nombre inicial `Jugador 1`, cambio de nombre y conservación de IDs, relaciones, respuesta y puntuación.
-- Pruebas automatizadas y comandos por repo: backend comprobado el 03/11/2026 con `npm.cmd run typecheck`, `npm.cmd test` (119 superadas, 1 omitida), `npm.cmd run build` y `npm.cmd run test:integration` (30/30 superadas). Tras añadir `game:deleted`, también pasaron `npm.cmd run typecheck` y `npm.cmd test -- --run tests/sockets/socket.integration.test.ts` (8/8). Pendiente ejecutar y registrar los comandos equivalentes del frontend.
+- Pruebas automatizadas y comandos por repo: backend comprobado el 03/11/2026 con `npm.cmd run typecheck`, `npm.cmd test` (119 superadas, 1 omitida), `npm.cmd run build` y `npm.cmd run test:integration` (30/30 superadas). Tras añadir `game:deleted`, también pasaron `npm.cmd run typecheck` y `npm.cmd test -- --run tests/sockets/socket.integration.test.ts` (8/8). En frontend también se comprobaron `npm run typecheck` y `npm run build`.
 - Mejora opcional aplicada: `displayNameSchema` compartido por registro y perfil, sin cambiar las reglas ni los mensajes de validación.
-- Prueba con dos cuentas (ganador/perdedor y empate): pendiente de realizar desde el frontend.
-- Prueba de fallo, reconexión y sala eliminada: la recuperación y permisos están cubiertos por integración del backend. La suite Socket.IO confirma que dos participantes unidos reciben `game:deleted`; falta la prueba visual conjunta de aviso, redirección, reconexión y tratamiento del `404` en frontend.
-- Orígenes locales/túneles utilizados y resultados CORS: pruebas locales con `FRONTEND_ORIGIN=http://localhost:5173` en el entorno aislado. Pendiente comprobar el frontend y, si se usa, documentar el origen de un túnel.
-- Dudas o limitaciones conocidas: en este equipo `npm run seed` falla dentro de `tsx` por un error temporal de memoria de Windows; tras compilar, `node dist/lib/seed.js` cargó correctamente el catálogo en `trivia_test`. No afecta a las suites ya aprobadas.
-- Revisión, aprobación y merges del tutor: pendiente.
+- Prueba con dos cuentas (ganador/perdedor y empate): completada y revisada por el tutor desde el frontend.
+- Prueba de fallo, reconexión y sala eliminada: completada. La recuperación, los permisos, el aviso `game:deleted`, la redirección y el tratamiento del `404` quedaron comprobados tanto por integración como en el recorrido visual.
+- Orígenes locales/túneles utilizados y resultados CORS: comprobados en local y en el despliegue público; HTTP, preflight y Socket.IO solo aceptan los orígenes configurados.
+- Dudas o limitaciones conocidas: en este equipo `npm run seed` falla dentro de `tsx` por un error temporal de memoria de Windows; tras compilar, `node dist/lib/seed.js` cargó correctamente el catálogo en `trivia_test`. No afecta a la entrega aprobada.
+- Revisión, aprobación y merges del tutor: completados.
 
 [Volver al README](../README.md) · [Reto 20](20-frontend.md) · [Reto 21](21-despliegue.md)

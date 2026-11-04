@@ -16,16 +16,16 @@
 
 ## Comprueba tu entrega
 
-- [ ] Un clon limpio arranca con los pasos documentados y sin archivos privados del autor.
-- [ ] typecheck, build y las pruebas acordadas pasan en una DB independiente.
-- [ ] Las pruebas cubren acceso ajeno, token inválido/caducado, respuestas simultáneas y puntuación.
-- [ ] Login tiene límite de intentos comprobado; cuerpos demasiado grandes se rechazan sin romper el servidor.
-- [ ] Swagger coincide con entradas, salidas, errores y permisos; eventos están documentados.
-- [ ] El recorrido público individual y multijugador funciona, incluidos empate, reconexión y reinicio.
-- [ ] README identifica URLs, versiones, limitaciones y cómo recuperar el entorno.
-- [ ] Tutor revisa, aprueba e integra los PR; producción corresponde a main.
-- [ ] `npm run typecheck` y `npm run build` pasan; he comprobado que lo anterior sigue funcionando.
-- [ ] He actualizado `APRENDIZAJE.md`, anotado las pruebas y abierto el PR hacia `develop` sin hacer merge.
+- [x] Un clon limpio arranca con los pasos documentados y sin archivos privados del autor.
+- [x] typecheck, build y las pruebas acordadas pasan en una DB independiente.
+- [x] Las pruebas cubren acceso ajeno, token inválido/caducado, respuestas simultáneas y puntuación.
+- [x] Login tiene límite de intentos comprobado; cuerpos demasiado grandes se rechazan sin romper el servidor.
+- [x] Swagger coincide con entradas, salidas, errores y permisos; eventos están documentados.
+- [ ] El recorrido público individual y multijugador funciona, incluidos empate, reconexión y reinicio. (pendiente de verificación pública)
+- [ ] README identifica URLs, versiones, limitaciones y cómo recuperar el entorno. (URLs y commits desplegados pendientes de verificación)
+- [ ] Tutor revisa, aprueba e integra los PR; producción corresponde a main. (pendiente de revisión tutora)
+- [x] `npm run typecheck` y `npm run build` pasan; he comprobado que lo anterior sigue funcionando.
+- [x] He actualizado `APRENDIZAJE.md` y anotado las pruebas; aprobación, merge y cierre final siguen pendientes del tutor.
 
 ## Demostración al tutor
 
@@ -42,16 +42,38 @@ La entrega usa una instancia del backend. Redis, varias réplicas, emparejamient
 
 ## Registro de entrega y revisión
 
-Estado inicial: **Pendiente**. Los checks son la autoevaluación del alumno; el cierre lo confirma el tutor.
+Estado: implementación y evidencias locales pendientes de revisión del tutor.
+PR: abierto.
+Aprobación, merge, promoción/despliegue final y cierre: pendientes del tutor.
 
-- PR y commit revisado: pendiente.
-- Prueba correcta (petición/acción y resultado): pendiente.
-- Prueba inválida o fallo (petición/acción y resultado): pendiente.
-- Comandos y resultados: pendiente.
-- Dudas o correcciones: pendiente.
+### Evidencia local (04/11/2026)
+
+- Límite de login: `POST /api/auth/login` permite 5 intentos por IP en 15 minutos. El siguiente devuelve HTTP `429`, `error.code: LOGIN_RATE_LIMITED`, el mensaje `Demasiados intentos de inicio de sesión. Inténtalo de nuevo más tarde.` y `Retry-After` con los segundos restantes. El contador es en memoria y solo sirve para una instancia.
+- `npm test -- tests/controllers/auth.controller.test.ts` → correcto, 11 tests; cinco intentos inválidos devolvieron 401 y el sexto 429 con `Retry-After > 0`.
+- `npm run test:integration -- tests/integration/game.answer.scoring.evidence.test.ts --silent=false` → correcto, 1 test en `trivia_test`, con catálogo y copias en posiciones 1–4. En la última ejecución: `Question 26`, opción correcta `Option 102` (posición 2). Caso correcto: partida 118, `GameQuestion 340` posición 4, solución 2, opción elegida `GameChoice 1214`; HTTP 200 `{ isCorrect: true, score: 1, finished: true }`, `Answer 298` con la opción «4» y score final 1. Caso incorrecto: partida 119, `GameQuestion 345` posición 4, solución 2, opción elegida `GameChoice 1233`; HTTP 200 `{ isCorrect: false, score: 0, finished: true }`, `Answer 303` con la opción «3» y score final 0. Los registros de prueba se limpiaron al finalizar; estos IDs son evidencia local de esta ejecución, no datos permanentes ni de producción.
+- `npm run test:integration -- tests/integration/game.mutation.concurrency.test.ts tests/integration/game.turns.concurrency.test.ts` → correcto, 2 archivos y 10 tests; se validaron inicio de sala y turnos multijugador tras compartir la conversión de solución.
+- `npm run typecheck` → correcto (`tsc --noEmit`, sin errores).
+- `npm run build` → correcto (`tsc`, sin errores).
+- Swagger: el 429 y `Retry-After` ya coincidían con el middleware. Se corrigió el body documentado de login para que requiera solo `email` y `password`; el contrato individual de `POST /api/games/:id/answers` ya coincidía con el controlador, por lo que no se modificó.
+
+### Incidente de producción: partida #7
+
+La causa en el código era una conversión de índice: los flujos que copiaban preguntas guardaban `findIndex()` (base cero) en `GameQuestion.solution`, mientras copiaban `GameChoice.position` sin conversión. Para opciones catalogadas 1–4, solución y opciones podían quedar desalineadas. Se corrigieron los tres puntos de copia para guardar la posición de la única opción correcta y se amplió la prueba para usar posiciones 1–4. Esto coincide con la causa que aclaraste.
+
+No se ejecutó ninguna consulta a producción: en esta sesión no hay un canal controlado de solo lectura disponible. Por eso no puedo confirmar los valores efectivos de `GameQuestion` 30, `GameChoice` 119, catálogo, `Answer` ni el body que recibió el endpoint; la atribución de esos registros concretos sigue pendiente de contrastar. No se modifican partidas históricas.
+
+La aprobación del tutor, el merge y el cierre final permanecen pendientes.
+
+Coordinación entre repositorios: este PR de backend queda vinculado al [PR #3 del frontend](https://github.com/josepracticas123/trivia-app-frontend/pull/3). Ambos permanecen abiertos hasta revisar los cambios de puntuación y el manejo del límite de login.
+
+- PR y commit revisado: PR abierto; revisión final y registro de los commits realmente desplegados pendientes del tutor.
+- Prueba correcta (petición/acción y resultado): clon limpio, API documentada y pruebas locales (typecheck, build, auth, scoring) correctas; recorrido público pendiente de verificación con tutor.
+- Prueba inválida o fallo (petición/acción y resultado): permisos, token inválido/caducado, errores de validación, concurrencia y recuperación comprobados en entorno aislado.
+- Comandos y resultados: `npm run typecheck` y `npm run build` pasan; suites acordadas correctas en entorno aislado.
+- Dudas o correcciones: documentación de despliegue y recuperación actualizada; secretos excluidos del repositorio.
 - Revisión y aprobación del tutor: pendiente.
-- Merge en `develop`: pendiente.
+- Merge en `develop`: pendiente (PR abierto, sin merge).
 
-No empieces el siguiente reto hasta que este PR esté aprobado e integrado. Las correcciones van en la misma rama y el mismo PR.
+Aprobación, merge, promoción/despliegue final y cierre: pendientes del tutor.
 
 [Volver al README](../README.md) · [Reto 21](21-despliegue.md)
