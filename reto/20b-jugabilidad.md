@@ -82,6 +82,8 @@ Deja ambos PR abiertos para el tutor, con capturas o evidencia breve de sala y r
 
 Enseña dos cuentas con nombres distintos: crear sala, copiar código, entrar, confirmar, jugar, ganar/perder y volver al resultado desde el historial. Repite con empate y muestra recuperación después de desconectar. Explica por qué ocultar una solución no basta si el marcador revela un acierto pendiente.
 
+Respuesta: aunque no se muestre cuál era la opción correcta, un marcador que aumente después de responder la primera persona revela indirectamente que acertó. Por eso, hasta que ambas personas respondan, el backend solo entrega puntuaciones públicas sin cambios que delaten el resultado de una respuesta pendiente.
+
 ## Registro de entrega y revisión
 
 Estado: **Implementado y probado; pendiente de PR y revisión**. Los checks son autoevaluación; el tutor confirma el cierre.
@@ -94,6 +96,7 @@ Estado: **Implementado y probado; pendiente de PR y revisión**. Los checks son 
 - Prueba de fallo, reconexión y sala eliminada: realizada visualmente. El rival recibió `game:deleted` y volvió al historial al borrar la sala; una desconexión temporal se recuperó y `io server disconnect` por JWT caducado llevó al login.
 - Orígenes locales/túneles utilizados y resultados CORS: pruebas locales con `FRONTEND_ORIGIN=http://localhost:5173` en el entorno aislado. Pendiente comprobar el frontend y, si se usa, documentar el origen de un túnel.
 - Dudas o limitaciones conocidas: en este equipo `npm run seed` falla dentro de `tsx` por un error temporal de memoria de Windows; tras compilar, `node dist/lib/seed.js` cargó correctamente el catálogo en `trivia_test`. No afecta a las suites ya aprobadas.
+- Catálogo de producción: se identificaron las tablas Prisma de Render. Las preguntas base se cargan en `Question` y sus opciones en `Option`; `GameQuestion`, `GameChoice` y `Answer` pertenecen a una partida y no se editan manualmente. Se preparó una carga transaccional de 20 preguntas en seis categorías. Falta confirmar su ejecución y comprobarlas desde el juego desplegado.
 - Revisión, aprobación y merges del tutor: pendiente.
 
 [Volver al README](../README.md) · [Reto 20](20-frontend.md) · [Reto 21](21-despliegue.md)

@@ -52,4 +52,17 @@ Estado inicial: **Pendiente**. Los checks son la autoevaluación del alumno; el 
 
 No empieces el siguiente reto hasta que este PR esté aprobado e integrado. Las correcciones van en la misma rama y el mismo PR.
 
+## Actualización de entrega — 04/11/2026
+
+Estado: **implementado y probado; pendiente de PR y revisión del tutor**.
+
+- Prueba correcta: dos cuentas en perfiles distintos crearon una sala, compartieron el código, entraron, se prepararon, respondieron y vieron el resultado. También se comprobó partida individual y empate.
+- Prueba de fallo: una sala eliminada devuelve al rival al historial mediante `game:deleted`; un JWT caducado lleva al login. Durante una petición, los controles se bloquean para impedir envíos duplicados.
+- Verificación: el 03/11/2026 pasaron `npm.cmd run typecheck` y `npm.cmd run build`.
+- Pendiente: crear y enlazar el PR del frontend hacia `develop` y realizar la comprobación completa de CORS contra el despliegue.
+
+### Respuesta para la demostración
+
+El frontend valida los campos obligatorios y su formato, muestra errores y bloquea envíos pendientes para ayudar a la persona usuaria. El backend vuelve a validar absolutamente toda entrada, autentica el JWT, comprueba permisos y aplica reglas de turnos, puntuación y acceso: el navegador no es una fuente de confianza.
+
 [Volver al README](../README.md) · [Reto 19](19-reconexion.md) · [Reto 21](21-despliegue.md)

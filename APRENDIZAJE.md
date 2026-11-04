@@ -28,3 +28,9 @@
 - **Solución:** ejecutar `npm run db:generate` y reiniciar el backend.
 - **Otros bloqueos resueltos:** falta de `.env.local` en el frontend, dependencias faltantes (`jsonwebtoken`), variables de entorno del backend (`JWT_SECRET`, `FRONTEND_ORIGIN`, `PORT`), proceso viejo en el puerto 3000.
 
+## Administración del catálogo y despliegue — 04/11/2026
+
+- La base de datos administrada conserva el catálogo como `Category` → `Question` → `Option`. Cada pregunta tiene cuatro opciones y una sola correcta. Las tablas `GameQuestion`, `GameChoice` y `Answer` son datos de una partida, por lo que no se cargan manualmente.
+- Se preparó una inserción transaccional de 20 preguntas de Geografía, Historia, Ciencia, Deportes, Cine y música y Cultura general. La ejecución y la comprobación desde la aplicación desplegada quedan pendientes de registrar.
+- Para administrar PostgreSQL sin desplegar otro servicio de pago, pgAdmin local se conecta a la URL externa con SSL en modo `require`. Las credenciales nunca se guardan en el frontend ni en esta documentación. Si una contraseña se expone, hay que rotarla en Render y actualizar la configuración del backend.
+
