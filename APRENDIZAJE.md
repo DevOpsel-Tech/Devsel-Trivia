@@ -6,7 +6,13 @@
 - Decisión de interfaz: el código de invitación se muestra y se copia desde la tarjeta de una sala en espera; se comparte por un canal externo. Las invitaciones internas a usuarios conectados quedan fuera de este reto.
 - Error y solución: PowerShell bloqueaba `npm.ps1` por la política de ejecución; los comandos se ejecutan como `npm.cmd run ...`.
 - Limitaciones conocidas: los filtros del historial se aplican a las partidas de la página cargada. Una invitación interna requeriría nuevos endpoints y eventos Socket.IO en el backend.
-- PR y correcciones: pendiente de crear/enlazar el PR del frontend hacia `develop`.
+- PR y correcciones: la implementación anterior de jugabilidad fue integrada
+  mediante el [PR frontend #1](https://github.com/josepracticas123/trivia-app-frontend/pull/1).
+  La actualización de documentación está en el
+  [PR frontend #3](https://github.com/josepracticas123/trivia-app-frontend/pull/3)
+  y se coordina con el
+  [PR backend #29](https://github.com/josepracticas123/trivia-app-backend/pull/29).
+  Su revisión, aprobación y merge no se dan por realizados hasta la confirmación del tutor.
 
 ## Notas anteriores del reto 20
 
@@ -27,4 +33,15 @@
 - **Motivo:** el cliente de Prisma no estaba generado, por lo que `prisma.user` era `undefined`.
 - **Solución:** ejecutar `npm run db:generate` y reiniciar el backend.
 - **Otros bloqueos resueltos:** falta de `.env.local` en el frontend, dependencias faltantes (`jsonwebtoken`), variables de entorno del backend (`JWT_SECRET`, `FRONTEND_ORIGIN`, `PORT`), proceso viejo en el puerto 3000.
+
+## Catálogo, puntuación y despliegue — 04/11/2026
+
+- La API pública devolvió 20 preguntas y se completó una partida usando el catálogo desplegado. El catálogo base se organiza como `Category` → `Question` → `Option`.
+- `GameQuestion`, `GameChoice` y `Answer` son copias y respuestas propias de una partida. Corregir una opción del catálogo no modifica automáticamente las partidas ya creadas.
+- La prueba reproducible de backend identificó el defecto: al copiar preguntas se mezclaban índices base cero con posiciones de opción 1–4. `GameQuestion.solution` podía guardar, por ejemplo, `1` aunque la opción correcta copiada tuviera posición `2`; la comparación marcaba un acierto como incorrecto. Se corrigieron los flujos individual, confirmación de sala y arranque multijugador para guardar la posición real de la única opción correcta.
+- La integración de scoring verificó una pregunta temporal cuya respuesta correcta tenía posición `2`: la copia conservó solución `2` y la respuesta devolvió `isCorrect: true`, `score: 1` y `finished: true`. El caso incorrecto devolvió `false`, `0` puntos y finalizó; las filas de prueba se limpiaron. También pasaron typecheck, build, las integraciones multijugador y los 11 tests del límite de login.
+- La partida #7 observada en producción (`gameQuestionId: 30`, `choiceId: 119`) no se pudo inspeccionar directamente con acceso controlado de solo lectura. El defecto corregido es compatible con su síntoma, pero no se afirma que sus filas concretas hayan sido verificadas ni se modificó esa partida histórica.
+- El frontend presenta exclusivamente puntos, estado y resultado proporcionados por la API; no calcula aciertos ni corrige el marcador en React.
+- El límite de intentos de login del reto 22 fue implementado y pasó sus 11 tests en backend. Su aprobación, merge y cierre siguen pendientes del tutor.
+- URLs públicas: [frontend](https://trivia-app-frontend-self.vercel.app/), [API](https://trivia-app-backend-l90r.onrender.com) y [Swagger](https://trivia-app-backend-l90r.onrender.com/docs). El commit desplegado sigue pendiente de confirmar desde el proveedor. No se documentan `DATABASE_URL`, contraseñas ni `JWT_SECRET`.
 

@@ -30,17 +30,50 @@ npm run build
 
 - `src/api/`: cliente HTTP y errores de API.
 - `src/config/`: configuración pública procedente de variables Vite.
-- `src/components/`: formularios y controles reutilizables.
-- `src/features/`: módulos de partidas (se crearán al integrar ese flujo).
-- `src/socket/`: conexión Socket.IO autenticada (se añadirá con los eventos reales del backend).
+- `src/components/`: formularios, lobby, sala, marcador, resultado y conexión Socket.IO.
 
 No se guardan credenciales de base de datos ni `JWT_SECRET` en este repositorio. El token de sesión se mantendrá solamente en memoria.
 
-## Contratos del backend revisados
+## Contratos y despliegue comprobados
 
-- Registro: `POST /api/auth/register` recibe `{ email, password }` y responde `201 { id, email }`.
+- Registro: `POST /api/auth/register` recibe `{ email, password, displayName }`.
 - Login: `POST /api/auth/login` recibe `{ email, password }` y responde `{ token, expiresIn, user }`.
+- Respuesta individual: `POST /api/games/:id/answers` devuelve
+  `{ isCorrect, score, finished }`.
+- En multijugador, el cliente no usa el resultado inmediato para revelar un
+  acierto: recupera el estado público persistido con `GET /api/games/:id`.
 - Los errores usan `{ error: { code, message } }`.
-- Socket.IO autentica con `auth: { token }`. Para volver a una sala se emite `join:game`; después de `joined:game`, el cliente recupera el estado con `GET /api/games/:id`.
+- Socket.IO autentica con `auth: { token }`. Tras `joined:game` o
+  `game:updated`, el cliente recupera el estado con `GET /api/games/:id`.
 
-Falta implementar en el frontend el login, el listado y ciclo de partidas, la sala, las jugadas y el flujo completo de reconexión. Para desarrollo local, configura `FRONTEND_ORIGIN=http://localhost:5173` en el backend y las URLs `VITE_API_URL`/`VITE_SOCKET_URL` en `.env.local`.
+## URLs y evidencia de la entrega
+
+- Frontend público: [trivia-app-frontend-self.vercel.app](https://trivia-app-frontend-self.vercel.app/).
+- API pública: [trivia-app-backend-l90r.onrender.com](https://trivia-app-backend-l90r.onrender.com).
+- Swagger público: [trivia-app-backend-l90r.onrender.com/docs](https://trivia-app-backend-l90r.onrender.com/docs).
+- Commit/versionado desplegado del frontend: pendiente de confirmar desde el despliegue.
+- Comprobación del 04/11/2026: la API entregó 20 preguntas y se completó una
+  partida con el catálogo desplegado.
+- `npm.cmd run typecheck`: correcto.
+- `npm.cmd run build`: correcto.
+- Backend: la prueba reproducible de puntuación confirmó y corrigió una mezcla
+  entre índices base cero y posiciones 1–4 al copiar la solución de una
+  pregunta. Pasaron la integración de scoring, las integraciones
+  multijugador y los 11 tests del límite de intentos de login.
+
+No se documentan `DATABASE_URL`, contraseñas, JWT ni otros secretos. Las URLs
+públicas se configuran mediante `VITE_API_URL` y `VITE_SOCKET_URL`; no se
+codifican en los componentes.
+
+## Estado de revisión
+
+La implementación de jugabilidad anterior se integró mediante el PR
+[#1](https://github.com/josepracticas123/trivia-app-frontend/pull/1).
+La actualización de documentación está en el PR
+[#3](https://github.com/josepracticas123/trivia-app-frontend/pull/3), relacionada
+con el backend [#29](https://github.com/josepracticas123/trivia-app-backend/pull/29).
+
+La revisión, aprobación y cierre de los retos 21 y 22 siguen pendientes del
+tutor. La partida #7 de producción no se ha inspeccionado directamente; el
+defecto corregido es compatible con el síntoma observado, pero no se modificó
+esa partida histórica.
