@@ -34,6 +34,27 @@ export const authSchemas = {
     },
     required: ["displayName", "email", "password"],
   },
+  LoginEntrada: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      email: {
+        type: "string",
+        format: "email",
+        maxLength: 254,
+        description: "Se normaliza quitando espacios exteriores y pasando a minúsculas.",
+        example: "juan@email.com",
+      },
+      password: {
+        type: "string",
+        minLength: 8,
+        maxLength: 128,
+        description: "Se comprueba tal cual, sin recortar.",
+        example: "secreta123",
+      },
+    },
+    required: ["email", "password"],
+  },
   // Cuerpo permitido al editar el perfil propio con PATCH /api/me.
   ActualizarPerfilEntrada: {
     type: "object",

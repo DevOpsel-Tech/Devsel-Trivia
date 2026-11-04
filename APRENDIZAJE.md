@@ -850,12 +850,12 @@ Un JWT tiene tres partes: cabecera, contenido y firma.
 
 ## 20 · Conecta un frontend mínimo
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- Lo que he construido: en el repositorio `trivia-app-frontend` implementé el registro e inicio de sesión, el perfil, el listado e historial de partidas, creación y entrada por código, sala de juego, preparación de jugadores, turnos, respuestas, reconexión y pantalla final. La interfaz muestra nombres públicos, «Tú», marcador publicado por el backend y los resultados de victoria, derrota o empate.
+- Conceptos y explicación propia: React conserva el estado de la interfaz; la API HTTP lleva el JWT en `Authorization` y Socket.IO lo recibe en `auth`. El token se mantiene en memoria, por lo que al recargar hay que iniciar sesión de nuevo. El cliente no calcula puntos ni ganador: presenta los campos que devuelve el backend y recupera el estado con `GET /api/games/:id` después de reconectar.
+- Estados y recuperación: la UI bloquea envíos mientras una acción está pendiente, conserva los datos ante un error y permite reintentar. Gestiona la reconexión, la vuelta a la sala y el evento `game:deleted`; si el detalle devuelve `404`, abandona la sala y vuelve a Mis partidas sin reintentos infinitos.
+- Pruebas y resultados: el PR del frontend #1, «feat: mejora la experiencia de juego del reto 20b», se integró en `develop` el 03/11/2026. Incluye tipos alineados con el contrato, documentación y pruebas del flujo multijugador. El backend mantiene las pruebas y comprobaciones registradas en el reto 20B.
+- Seguridad y configuración: el frontend usa `VITE_API_URL` y `VITE_SOCKET_URL`; no contiene `DATABASE_URL`, credenciales de PostgreSQL ni `JWT_SECRET`. Los orígenes se autorizan en backend mediante `FRONTEND_ORIGIN`.
+- Entrega y revisión: el recorrido con dos cuentas (victoria, derrota, empate, reconexión y borrado de sala) se completó y fue aprobado por el tutor. El reto 20 quedó integrado y cerrado.
 
 ## 20B · Dale claridad a la experiencia de juego
 
@@ -865,28 +865,39 @@ Un JWT tiene tres partes: cabecera, contenido y firma.
 - Migración: `20261102103820_add_user_display_name` agrega primero una columna opcional, asigna `Jugador <id>` a cuentas existentes y después la hace obligatoria; así conserva usuarios y sus relaciones. El 03/11/2026 ensayé la migración con Prisma en la base local aislada `trivia_test_legacy_20b`, partiendo del esquema anterior y de una fixture con usuario Argon2, partida, participante, respuesta correcta y puntuación. Después de migrar, el usuario inició sesión, recibió `Jugador 1`, cambió su nombre y conservó ID, partida, relaciones, respuesta y puntuación.
 - Privacidad y puntuación: no se exponen emails ni hashes del rival. La puntuación del primer jugador permanece oculta mientras la ronda está pendiente; al responder ambos se publica la ronda cerrada.
 - Sala eliminada: después de que `DELETE /api/games/:id` confirme el borrado de una sala `WAITING`, el backend emite `game:deleted` con `{ id }` a `game:${gameId}`. Aunque el borrado en cascada elimine `GamePlayer`, los sockets que ya estaban unidos a esa sala reciben el aviso. El evento está tipado y documentado; no incluye datos sensibles.
-- Comportamiento del frontend pendiente: al recibir `game:deleted` para la partida abierta debe desuscribir su listener, mostrar «El creador ha eliminado la sala» y volver a «Mis partidas». Si estaba desconectado, el `GET /api/games/:id` devolverá `404` y debe ejecutar la misma salida sin reintentos infinitos.
+- Comportamiento del frontend completado: al recibir `game:deleted` para la partida abierta desuscribe su listener, muestra «El creador ha eliminado la sala» y vuelve a «Mis partidas». Si estaba desconectado, el `GET /api/games/:id` devuelve `404` y ejecuta la misma salida sin reintentos infinitos.
 - Pruebas automatizadas: `npm.cmd run typecheck`, `npm.cmd test` (119 superadas, 1 omitida), `npm.cmd run build` y `npm.cmd run test:integration` (30/30 superadas) completadas el 03/11/2026.
 - Verificación del aviso de borrado: `npm.cmd run typecheck` y `npm.cmd test -- --run tests/sockets/socket.integration.test.ts` correctos; la suite de Socket.IO tiene 8 pruebas, incluida la recepción de `game:deleted` por dos participantes conectados.
 - Base de pruebas: configuré PostgreSQL local con una base aislada llamada `trivia_test`, a la que se aplicaron las 9 migraciones. El entorno `tests/.env.test`, ignorado por Git, contiene `DATABASE_URL`, `JWT_SECRET` y `FRONTEND_ORIGIN`; no se usan bases de Railway ni producción para pruebas destructivas.
 - Correcciones durante la prueba: actualicé expectativas de integración que aún esperaban el contrato anterior, sin `displayName`, `isCreator` ni `isReady`, y que no consideraban pública la puntuación tras cerrar una ronda. Añadí una regresión para una partida histórica 1–0 sin `winnerUserId`, que confirma que historial y detalle devuelven el mismo ganador, y mantuve el empate real. El seed con `tsx` falló en este equipo con un error temporal de memoria de Windows; tras compilar, `node dist/lib/seed.js` cargó las preguntas en `trivia_test` correctamente.
-- Pendiente de frontend: mostrar nombres y «Tú», organizar el historial por estado y paginarlo, recuperar/copiar el código de sala, enseñar confirmaciones, estado de turno/progreso, bloqueo de envíos, escuchar y limpiar `game:deleted`, y la pantalla final de ganar/perder/empate.
-- Pendiente de validación conjunta: recorrido visual con dos cuentas (victoria, derrota, empate, reconexión y sala eliminada), capturas/evidencias, y PRs enlazados de frontend y backend hacia `develop`.
+- Frontend completado: muestra nombres y «Tú», organiza el historial por estado con paginación, recupera y copia el código de sala, enseña confirmaciones, turno y progreso, bloquea envíos, escucha y limpia `game:deleted`, y presenta ganar, perder o empate.
+- Validación conjunta: recorrido visual con dos cuentas (victoria, derrota, empate, reconexión y sala eliminada) comprobado y aprobado; los cambios de frontend y backend quedaron integrados.
 
 ## 21 · Despliega backend, DB y frontend
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- Lo que he construido: desplegué el backend en Render, PostgreSQL como servicio independiente y el frontend en Vercel. Añadí el comando `npm run db:migrate:deploy` para aplicar en producción exclusivamente las migraciones versionadas.
+- Administración de PostgreSQL: desde un PC externo conecté pgAdmin 4 creando un servidor separado del que trae por defecto y usando los datos del servicio PostgreSQL. La conexión funcionó. Esos datos son secretos y no se han escrito en el repositorio.
+- Conceptos y explicación propia: desplegar código compila y ejecuta la aplicación; migrar la base cambia su esquema de forma controlada. Un redeploy del backend no debe borrar PostgreSQL. En producción se usa `prisma migrate deploy`; `migrate dev`, `reset` y los seeds de práctica no son seguros porque pueden modificar o borrar datos.
+- Configuración: Render recibe `DATABASE_URL`, `JWT_SECRET` y `FRONTEND_ORIGIN` como variables privadas. Vercel solo recibe `VITE_API_URL` y `VITE_SOCKET_URL`; las variables `VITE_*` se incorporan al build y nunca deben contener secretos. El backend escucha el `PORT` que proporciona Render en `0.0.0.0`, ofrece `/health` y comparte el mismo origen permitido para HTTP y Socket.IO.
+- Estado y evidencias (04/11/2026): el procedimiento reproducible está en `docs/despliegue.md`, sin URLs ni credenciales. La verificación pública de dos personas, la persistencia tras redeploy, las URLs y los commits realmente desplegados quedan pendientes de registrar con el tutor. La aprobación, el merge y el cierre no se han producido todavía.
 
 ## 22 · Entrega y revisión final
 
-- Lo que he construido: pendiente.
-- Conceptos y explicación propia: pendiente.
-- Pruebas y resultados: pendiente.
-- Error y solución: pendiente.
-- Dudas: pendiente.
-- PR y correcciones: pendiente.
+- Límite de login (04/11/2026): añadí un middleware específico para `POST /api/auth/login`. Cuenta todas las peticiones por IP en memoria: permite 5 intentos en una ventana de 15 minutos y el sexto responde `429` con el contrato `LOGIN_RATE_LIMITED` y la cabecera `Retry-After` en segundos. Se documentó también en Swagger.
+- Alcance conocido: es una protección sencilla de una sola instancia. El contador se pierde cuando el proceso se reinicia o redeploya y no se comparte entre réplicas; para varias instancias se necesitaría un almacén compartido, por ejemplo Redis. No sustituye controles adicionales contra ataques distribuidos.
+- Prueba local (04/11/2026): `npm.cmd test -- tests/controllers/auth.controller.test.ts` envía cinco credenciales inválidas desde la misma IP simulada y comprueba `401`; el sexto intento devuelve `429`, `Retry-After > 0`, el cuerpo documentado y no llega a `loginUser`. Esta prueba no usa Render ni la base de datos.
+
+- Causa de código de scoring (04/11/2026): las copias guardaban `GameQuestion.solution` con `findIndex()` (base cero) y las opciones conservaban `GameChoice.position`. Si el catálogo usa posiciones 1–4, la solución quedaba desplazada. Corregí los tres flujos que copian preguntas para persistir la posición de la única opción correcta. La integración usa posiciones 1–4 y confirma que la copia coincide y que la puntuación funciona. Esto corresponde a la causa que aclaraste para el incidente.
+- Partida #7 en producción (04/11/2026): no había un canal controlado de solo lectura disponible en esta sesión; `GameQuestion` 30, `GameChoice` 119, `Answer` y el body real del endpoint siguen sin contraste directo. No se tocó la partida histórica ni se presenta la prueba local como verificación de sus filas.
+
+- Lo que he construido: preparé la entrega final con backend, Prisma, documentación y pruebas locales. La comprobación de las URLs públicas, versiones desplegadas y recorrido externo queda pendiente de revisión del tutor.
+- Conceptos y explicación propia: un despliegue reproducible separa código, configuración y datos. El código se compila y se publica; las variables se configuran en el proveedor; las migraciones cambian el esquema de PostgreSQL de forma versionada. Socket.IO funciona sobre el mismo servidor HTTP y necesita los mismos orígenes permitidos que la API.
+- Pruebas y resultados: se validaron localmente typecheck, build, autenticación, permisos, validación, concurrencia, recuperación, Socket.IO, puntuación y límite de login. El recorrido público individual y multijugador, incluido el reinicio del backend, queda pendiente de evidencia verificable.
+- Seguridad y recuperación: las pruebas se ejecutan con una base aislada; producción no recibe `migrate dev`, `reset` ni seeds de práctica. Las credenciales de PostgreSQL, `JWT_SECRET` y las conexiones administrativas de pgAdmin 4 no están en Git ni en el bundle de Vite.
+- Revisión y cierre: PR abierto. La comprobación del despliegue, recorrido público, aprobación, merge y cierre final corresponden al tutor y siguen pendientes.
+- Coordinación entre repositorios: el backend se revisa junto con el [PR #3 del frontend](https://github.com/josepracticas123/trivia-app-frontend/pull/3); los dos PR permanecen abiertos hasta completar la revisión conjunta.
+- Evidencia reproducible de scoring (04/11/2026): `npm run test:integration -- tests/integration/game.answer.scoring.evidence.test.ts --silent=false` → correcto en `trivia_test`; confirma la copia catálogo→partida, la petición HTTP, `Answer` y score final en casos correcto (1 punto) e incorrecto (0 puntos). Los IDs generados por la ejecución se imprimen como JSON `EVIDENCIA_*`.
+- Regresión multijugador (04/11/2026): `npm run test:integration -- tests/integration/game.mutation.concurrency.test.ts tests/integration/game.turns.concurrency.test.ts` → correcto, 2 archivos y 10 tests.
+- Evidencia del límite (04/11/2026): `npm test -- tests/controllers/auth.controller.test.ts` → correcto, 11 tests; cinco intentos simulados desde la misma IP devuelven 401 y el sexto responde 429 con `LOGIN_RATE_LIMITED` y `Retry-After` positivo.
+- Comprobaciones de esta revisión (04/11/2026): `npm run typecheck` → correcto (`tsc --noEmit`); `npm run build` → correcto (`tsc`).
+- IDs temporales de la última ejecución (04/11/2026): Question 26 / Option 102 (posición correcta 2); partida correcta 118 / GameQuestion 340 / GameChoice 1214 / Answer 298; partida incorrecta 119 / GameQuestion 345 / GameChoice 1233 / Answer 303. El test los eliminó al terminar; no corresponden a producción.
