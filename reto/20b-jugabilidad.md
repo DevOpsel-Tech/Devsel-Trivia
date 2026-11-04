@@ -86,9 +86,9 @@ Respuesta: aunque no se muestre cuál era la opción correcta, un marcador que a
 
 ## Registro de entrega y revisión
 
-Estado: **Implementado y probado; pendiente de PR y revisión**. Los checks son autoevaluación; el tutor confirma el cierre.
+Estado: **implementación de jugabilidad integrada; documentación y revisión de evidencias en curso**.
 
-- PR y commits de backend/frontend: backend en la rama `reto/20b-jugabilidad`, con el commit `666ed97` («feat: add public player names and game room contracts») y PR #26. Falta crear la rama y el PR del frontend hacia `develop`, enlazándolo con dicho PR.
+- Implementación anterior: integrada en el frontend mediante el [PR #1](https://github.com/josepracticas123/trivia-app-frontend/pull/1). La actualización de documentación está en el [PR frontend #3](https://github.com/josepracticas123/trivia-app-frontend/pull/3) y se relaciona con el [PR backend #29](https://github.com/josepracticas123/trivia-app-backend/pull/29); su revisión, aprobación y merge no se dan por realizados hasta la confirmación del tutor.
 - Migración ensayada y datos conservados: ensayo completado en `trivia_test_legacy_20b`, una base local aislada creada con el esquema anterior. Se insertaron usuario con hash Argon2, partida, participante, respuesta y puntuación; Prisma aplicó `20261102103820_add_user_display_name`. Se comprobó login, nombre inicial `Jugador 1`, cambio de nombre y conservación de IDs, relaciones, respuesta y puntuación.
 - Pruebas automatizadas y comandos por repo: backend comprobado el 03/11/2026 con `npm.cmd run typecheck`, `npm.cmd test` (119 superadas, 1 omitida), `npm.cmd run build` y `npm.cmd run test:integration` (30/30 superadas). Frontend comprobado el 03/11/2026 con `npm.cmd run typecheck` y `npm.cmd run build`, ambos correctos.
 - Mejora opcional aplicada: `displayNameSchema` compartido por registro y perfil, sin cambiar las reglas ni los mensajes de validación. En frontend se extrajeron participantes, marcador y resultado de `GameRoom` en componentes de presentación.
@@ -96,7 +96,10 @@ Estado: **Implementado y probado; pendiente de PR y revisión**. Los checks son 
 - Prueba de fallo, reconexión y sala eliminada: realizada visualmente. El rival recibió `game:deleted` y volvió al historial al borrar la sala; una desconexión temporal se recuperó y `io server disconnect` por JWT caducado llevó al login.
 - Orígenes locales/túneles utilizados y resultados CORS: pruebas locales con `FRONTEND_ORIGIN=http://localhost:5173` en el entorno aislado. Pendiente comprobar el frontend y, si se usa, documentar el origen de un túnel.
 - Dudas o limitaciones conocidas: en este equipo `npm run seed` falla dentro de `tsx` por un error temporal de memoria de Windows; tras compilar, `node dist/lib/seed.js` cargó correctamente el catálogo en `trivia_test`. No afecta a las suites ya aprobadas.
-- Catálogo de producción: se identificaron las tablas Prisma de Render. Las preguntas base se cargan en `Question` y sus opciones en `Option`; `GameQuestion`, `GameChoice` y `Answer` pertenecen a una partida y no se editan manualmente. Se preparó una carga transaccional de 20 preguntas en seis categorías. Falta confirmar su ejecución y comprobarlas desde el juego desplegado.
-- Revisión, aprobación y merges del tutor: pendiente.
+- Catálogo desplegado: comprobado el 04/11/2026; la API devolvió 20 preguntas y se completó una partida desde la aplicación. `GameQuestion`, `GameChoice` y `Answer` pertenecen a cada partida y no se editan manualmente.
+- Puntuación: una prueba reproducible de backend confirmó y corrigió la mezcla de índices base cero con posiciones 1–4 al copiar la solución a `GameQuestion`. La corrección cubre el flujo individual, la confirmación de sala y el arranque multijugador; el frontend conserva los puntos entregados por la API. La partida #7 (`gameQuestionId: 30`, `choiceId: 119`) no se inspeccionó directamente en producción, por lo que el defecto es compatible con su síntoma pero sus filas concretas siguen sin verificarse.
+- URLs públicas: [frontend](https://trivia-app-frontend-self.vercel.app/), [API](https://trivia-app-backend-l90r.onrender.com) y [Swagger](https://trivia-app-backend-l90r.onrender.com/docs). El commit desplegado sigue pendiente de confirmar desde el proveedor; no se inventan ni se versionan secretos.
+- Límite de login del reto 22: implementado y comprobado en backend con 11 tests. Su aprobación, merge y cierre siguen pendientes del tutor.
+- Revisión, aprobación y cierre de los retos 21 y 22: pendientes del tutor. No se marcan como aprobados ni mergeados el PR frontend #3 ni el PR backend #29.
 
 [Volver al README](../README.md) · [Reto 20](20-frontend.md) · [Reto 21](21-despliegue.md)

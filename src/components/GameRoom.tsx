@@ -254,6 +254,10 @@ si o es creador o falta un jugador, muestra error*/
   const currentQuestion = game?.questions.find(
     (question) => question.id === currentQuestionId,
   );
+  // La posición solo ordena la presentación; al enviar siempre usamos choice.id.
+  const visibleChoices = currentQuestion
+    ? [...currentQuestion.choices].sort((a, b) => a.position - b.position)
+    : [];
   const totalQuestions = game?.questions.length ?? 0;
   const currentQuestionNumber = currentQuestion
     ? currentQuestion.position + 1
@@ -348,10 +352,7 @@ si o es creador o falta un jugador, muestra error*/
 
       {game?.status === "WAITING" && (
         <div className="mt-6 space-y-4">
-          <GameParticipants
-            currentPlayer={currentPlayer}
-            opponent={opponent}
-          />
+          <GameParticipants currentPlayer={currentPlayer} opponent={opponent} />
           {currentPlayer?.isReady ? (
             <p className="text-sm text-[#A3A3A3]" role="status">
               Esperando a tu rival.
@@ -390,7 +391,8 @@ si o es creador o falta un jugador, muestra error*/
           </p>
 
           <div className="mt-5 grid gap-3">
-            {currentQuestion.choices.map((choice) => (
+            {/* No usamos el índice: texto, posición e id proceden de la misma GameChoice. */}
+            {visibleChoices.map((choice) => (
               <button
                 key={choice.id}
                 type="button"
