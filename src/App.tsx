@@ -18,10 +18,14 @@ type AppRoute = { screen: Screen; gameId: number | null };
 function readRoute(): AppRoute {
   const gameMatch = window.location.hash.match(/^#\/games\/(\d+)$/);
   if (gameMatch) return { screen: "room", gameId: Number(gameMatch[1]) };
-  if (window.location.hash === "#/games") return { screen: "lobby", gameId: null };
-  if (window.location.hash === "#/login") return { screen: "login", gameId: null };
-  if (window.location.hash === "#/register") return { screen: "register", gameId: null };
-  if (window.location.hash === "#/home") return { screen: "home", gameId: null };
+  if (window.location.hash === "#/games")
+    return { screen: "lobby", gameId: null };
+  if (window.location.hash === "#/login")
+    return { screen: "login", gameId: null };
+  if (window.location.hash === "#/register")
+    return { screen: "register", gameId: null };
+  if (window.location.hash === "#/home")
+    return { screen: "home", gameId: null };
   return { screen: "welcome", gameId: null };
 }
 
@@ -97,8 +101,24 @@ function AppBackground() {
     </div>
   );
 }
+function useReducedMotion() {
+  const [reducedMotion, setReducedMotion] = useState(() =>
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(mediaQuery.matches);
+
+    mediaQuery.addEventListener("change", update);
+    return () => mediaQuery.removeEventListener("change", update);
+  }, []);
+
+  return reducedMotion;
+}
 
 function App() {
+  const prefersReducedMotion = useReducedMotion();
   const [restoredSession] = useState(() => readStoredSession());
   const [initialRoute] = useState(() => readRoute());
   // Estado temporal para navegar sin instalar un router.
@@ -119,7 +139,9 @@ function App() {
     restoredSession?.userId ?? null,
   );
   const [selectedGameId, setSelectedGameId] = useState<number | null>(
-    restoredSession && initialRoute.screen === "room" ? initialRoute.gameId : null,
+    restoredSession && initialRoute.screen === "room"
+      ? initialRoute.gameId
+      : null,
   );
   // Nombre público del usuario autenticado, devuelto por POST /api/auth/login.
   const [sessionDisplayName, setSessionDisplayName] = useState<string | null>(
@@ -137,13 +159,16 @@ function App() {
     },
     [],
   );
-  const clearSession = useCallback((nextScreen: Screen = "home") => {
-    window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
-    setSessionToken(null);
-    setSessionUserId(null);
-    setSessionDisplayName(null);
-    navigate(nextScreen, null, true);
-  }, [navigate]);
+  const clearSession = useCallback(
+    (nextScreen: Screen = "home") => {
+      window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      setSessionToken(null);
+      setSessionUserId(null);
+      setSessionDisplayName(null);
+      navigate(nextScreen, null, true);
+    },
+    [navigate],
+  );
   const handleAuthenticationError = useCallback(() => {
     clearSession("login");
     setLoginNotice("Tu sesión ha caducado. Inicia sesión de nuevo.");
@@ -152,7 +177,11 @@ function App() {
     (displayName: string) => {
       setSessionDisplayName(displayName);
       if (sessionToken && sessionUserId !== null) {
-        saveStoredSession({ token: sessionToken, userId: sessionUserId, displayName });
+        saveStoredSession({
+          token: sessionToken,
+          userId: sessionUserId,
+          displayName,
+        });
       }
     },
     [sessionToken, sessionUserId],
@@ -170,7 +199,10 @@ function App() {
   useEffect(() => {
     const restoreRoute = () => {
       const route = readRoute();
-      if ((route.screen === "lobby" || route.screen === "room") && !sessionToken) {
+      if (
+        (route.screen === "lobby" || route.screen === "room") &&
+        !sessionToken
+      ) {
         navigate("login", null, true);
         return;
       }
@@ -257,6 +289,7 @@ function App() {
         <AppBackground />
         <div className="relative z-10 mx-auto max-w-4xl">
           <GameRoom
+            key={selectedGameId}
             gameId={selectedGameId}
             token={sessionToken}
             userId={sessionUserId}
@@ -297,55 +330,58 @@ function App() {
           color="#A3E635"
           glowColor="#BEF264"
           borderRadius={24}
+          active={!prefersReducedMotion}
           className="mx-auto max-w-md"
           style={undefined}
         >
-        <section className="ambient-card relative z-10 rounded-3xl border border-[#2B2B2B] bg-[#141414] p-6 shadow-2xl shadow-black/30 sm:p-8">
-          <button
-            type="button"
-            onClick={() => navigate("home")}
-            className="text-sm font-semibold text-[#A3A3A3] hover:text-[#A3E635]"
-          >
-            ← Volver
-          </button>
+          <section className="ambient-card relative z-10 rounded-3xl border border-[#2B2B2B] bg-[#141414] p-6 shadow-2xl shadow-black/30 sm:p-8">
+            <button
+              type="button"
+              onClick={() => navigate("home")}
+              className="text-sm font-semibold text-[#A3A3A3] hover:text-[#A3E635]"
+            >
+              ← Volver
+            </button>
 
-          <p className="mt-8 text-sm font-bold text-[#A3E635]">
-            {isRegister ? "NUEVA CUENTA" : "BIENVENIDO DE NUEVO"}
-          </p>
+            <p className="mt-8 text-sm font-bold text-[#A3E635]">
+              {isRegister ? "NUEVA CUENTA" : "BIENVENIDO DE NUEVO"}
+            </p>
 
-          <h1 className="mt-3 text-3xl font-black">
-            {isRegister ? "Crea tu cuenta" : "Inicia sesión"}
-          </h1>
+            <h1 className="mt-3 text-3xl font-black">
+              {isRegister ? "Crea tu cuenta" : "Inicia sesión"}
+            </h1>
 
-          {isRegister ? (
-            <RegisterForm
-              onRegistered={() => {
-                setLoginNotice("Cuenta creada. Inicia sesión para continuar.");
-                navigate("login");
-              }}
-            />
-          ) : (
-            <LoginForm
-              notice={loginNotice}
-              onLoggedIn={(response) => {
-                // Guardamos la sesión de la pestaña y la recuperamos tras F5.
-                saveStoredSession({
-                  token: response.token,
-                  userId: response.user.id,
-                  displayName: response.user.displayName,
-                });
-                setSessionToken(response.token);
-                setSessionUserId(response.user.id);
-                setSessionDisplayName(response.user.displayName);
-                // Quitamos el aviso de registro después del login.
-                setLoginNotice("");
+            {isRegister ? (
+              <RegisterForm
+                onRegistered={() => {
+                  setLoginNotice(
+                    "Cuenta creada. Inicia sesión para continuar.",
+                  );
+                  navigate("login");
+                }}
+              />
+            ) : (
+              <LoginForm
+                notice={loginNotice}
+                onLoggedIn={(response) => {
+                  // Guardamos la sesión de la pestaña y la recuperamos tras F5.
+                  saveStoredSession({
+                    token: response.token,
+                    userId: response.user.id,
+                    displayName: response.user.displayName,
+                  });
+                  setSessionToken(response.token);
+                  setSessionUserId(response.user.id);
+                  setSessionDisplayName(response.user.displayName);
+                  // Quitamos el aviso de registro después del login.
+                  setLoginNotice("");
 
-                // Volvemos a la portada.
-                navigate("lobby");
-              }}
-            />
-          )}
-        </section>
+                  // Volvemos a la portada.
+                  navigate("lobby");
+                }}
+              />
+            )}
+          </section>
         </ElectricBorder>
       </main>
     );
@@ -377,6 +413,7 @@ function App() {
             intensity={1.2}
             speed={1}
             beamWidth={1.2}
+            paused={prefersReducedMotion}
             surfaceRef={undefined}
             revealImage={undefined}
             dpr={undefined}
