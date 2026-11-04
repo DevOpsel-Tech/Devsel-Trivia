@@ -137,13 +137,32 @@ export function startMultiplayerGame(token: string, gameId: number) {
     started: boolean;
   }>(`/api/games/${gameId}/start`, { method: "POST", token });
 }
+// Resultado del intento individual. La pantalla sigue recargando GET /games/:id:
+// ese snapshot persistido es la fuente de verdad para estado y puntuación.
+export type IndividualAnswerResponse = {
+  isCorrect: boolean;
+  score: number;
+  finished: boolean;
+};
+
+// La misma ruta también se usa en multijugador, cuyo contrato previo solo
+// confirma el cierre de la ronda para no revelar el acierto antes de tiempo.
+export type MultiplayerAnswerResponse = {
+  roundComplete: boolean;
+};
+
+// Conserva ambas respuestas documentadas mientras el backend comparte ruta.
+export type SubmitAnswerResponse =
+  | IndividualAnswerResponse
+  | MultiplayerAnswerResponse;
+
 export function submitAnswer(
   token: string,
   gameId: number,
   gameQuestionId: number,
   choiceId: number,
 ) {
-  return apiRequest<{ roundComplete: boolean }>(
+  return apiRequest<SubmitAnswerResponse>(
     `/api/games/${gameId}/answers`,
     {
       method: "POST",
