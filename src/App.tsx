@@ -5,6 +5,8 @@ import { LoginForm } from "./components/LoginForm";
 import { RegisterForm } from "./components/RegisterForm";
 import { GameLobby } from "./components/GameLobby";
 import { GameRoom } from "./components/GameRoom";
+import ElectricBorder from "./components/ElectricBorder";
+import LaserFlow from "./components/LaserFlow";
 import FlyingButton from "./components/FlyingButton";
 import LetterGlitch from "./components/LetterGlitch";
 import SplitFlapText from "./components/SplitFlapText";
@@ -159,7 +161,11 @@ function App() {
     if (isEntering) return;
 
     setIsEntering(true);
-    window.setTimeout(() => navigate("home"), 3200);
+    window.setTimeout(() => {
+      // Al volver a la portada, el botón debe poder iniciar otra entrada.
+      setIsEntering(false);
+      navigate("home");
+    }, 3200);
   };
   useEffect(() => {
     const restoreRoute = () => {
@@ -287,7 +293,14 @@ function App() {
     return (
       <main className="relative isolate min-h-screen overflow-hidden bg-[#090909]/90 px-4 py-6 text-[#F8FAFC] sm:py-10">
         <AppBackground />
-        <section className="ambient-card relative z-10 mx-auto max-w-md rounded-3xl border border-[#2B2B2B] bg-[#141414] p-6 shadow-2xl shadow-black/30 sm:p-8">
+        <ElectricBorder
+          color="#A3E635"
+          glowColor="#BEF264"
+          borderRadius={24}
+          className="mx-auto max-w-md"
+          style={undefined}
+        >
+        <section className="ambient-card relative z-10 rounded-3xl border border-[#2B2B2B] bg-[#141414] p-6 shadow-2xl shadow-black/30 sm:p-8">
           <button
             type="button"
             onClick={() => navigate("home")}
@@ -333,6 +346,7 @@ function App() {
             />
           )}
         </section>
+        </ElectricBorder>
       </main>
     );
   }
@@ -341,17 +355,33 @@ function App() {
       <AppBackground />
       <div className="relative z-10 mx-auto max-w-4xl">
         <header className="mb-10 flex items-center justify-between">
-          <p className="text-xl font-black tracking-tight">
-            trivia<span className="text-[#A3E635]">.</span>
-          </p>
+          <button
+            type="button"
+            onClick={() => navigate("welcome")}
+            className="text-xl font-black tracking-tight transition hover:text-[#A3E635]"
+            aria-label="Volver a la portada"
+          >
+            ← trivia<span className="text-[#A3E635]">.</span>
+          </button>
 
           <span className="rounded-full border border-[#2B2B2B] bg-[#141414] px-3 py-1 text-xs font-semibold text-[#A3A3A3]">
             MULTIJUGADOR
           </span>
         </header>
 
-        <section className="ambient-card rounded-3xl border border-[#2B2B2B] bg-[#141414] shadow-2xl shadow-black/30">
-          <div className="grid lg:grid-cols-[1.2fr_0.8fr]">
+        <section className="ambient-card relative overflow-hidden rounded-3xl border border-[#2B2B2B] bg-[#141414] shadow-2xl shadow-black/30">
+          <LaserFlow
+            className="z-0 opacity-80"
+            style={{ position: "absolute", inset: 0 }}
+            color="#A3E635"
+            intensity={1.2}
+            speed={1}
+            beamWidth={1.2}
+            surfaceRef={undefined}
+            revealImage={undefined}
+            dpr={undefined}
+          />
+          <div className="relative z-10 grid lg:grid-cols-[1.2fr_0.8fr]">
             <div className="p-8 sm:p-12">
               <div className="mb-8 flex items-center gap-2 text-sm font-bold text-[#A3E635]">
                 <span className="h-2 w-2 rounded-full bg-[#A3E635]" />
