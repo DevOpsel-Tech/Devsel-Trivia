@@ -32,7 +32,7 @@ npm run build
 - `src/config/`: configuración pública procedente de variables Vite.
 - `src/components/`: formularios, lobby, sala, marcador, resultado y conexión Socket.IO.
 
-No se guardan credenciales de base de datos ni `JWT_SECRET` en este repositorio. El token de sesión se mantendrá solamente en memoria.
+No se guardan credenciales de base de datos ni `JWT_SECRET` en este repositorio. El token de sesión se conserva en `sessionStorage` solo mientras la pestaña siga abierta. Las rutas con hash conservan «Mis partidas» o una sala concreta al recargar y con atrás/adelante; el estado se recupera desde la API, no desde historial, puntuaciones ni preguntas locales. Al cerrar sesión, expirar el JWT o cerrar la pestaña, se elimina.
 
 ## Contratos y despliegue comprobados
 

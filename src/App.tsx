@@ -1,6 +1,6 @@
 /* Componente raíz: gestiona las pantallas (home, registro, login) y el token en memoria. */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { LoginForm } from "./components/LoginForm";
 import { RegisterForm } from "./components/RegisterForm";
 import { GameLobby } from "./components/GameLobby";
@@ -10,6 +10,67 @@ import LetterGlitch from "./components/LetterGlitch";
 import SplitFlapText from "./components/SplitFlapText";
 
 type Screen = "welcome" | "home" | "register" | "login" | "lobby" | "room";
+
+type AppRoute = { screen: Screen; gameId: number | null };
+
+function readRoute(): AppRoute {
+  const gameMatch = window.location.hash.match(/^#\/games\/(\d+)$/);
+  if (gameMatch) return { screen: "room", gameId: Number(gameMatch[1]) };
+  if (window.location.hash === "#/games") return { screen: "lobby", gameId: null };
+  if (window.location.hash === "#/login") return { screen: "login", gameId: null };
+  if (window.location.hash === "#/register") return { screen: "register", gameId: null };
+  if (window.location.hash === "#/home") return { screen: "home", gameId: null };
+  return { screen: "welcome", gameId: null };
+}
+
+function hashForRoute(screen: Screen, gameId: number | null) {
+  if (screen === "lobby") return "#/games";
+  if (screen === "room" && gameId) return `#/games/${gameId}`;
+  if (screen === "login") return "#/login";
+  if (screen === "register") return "#/register";
+  if (screen === "home") return "#/home";
+  return "#/";
+}
+
+// sessionStorage conserva la sesión al recargar esta pestaña, pero se borra al
+// cerrarla. No guardamos historial, puntuación ni el estado de una pregunta.
+const SESSION_STORAGE_KEY = "trivia.session";
+
+type StoredSession = {
+  token: string;
+  userId: number;
+  displayName: string;
+};
+
+function readStoredSession(): StoredSession | null {
+  try {
+    const value = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (!value) return null;
+
+    const session: unknown = JSON.parse(value);
+    if (
+      typeof session === "object" &&
+      session !== null &&
+      "token" in session &&
+      typeof session.token === "string" &&
+      "userId" in session &&
+      typeof session.userId === "number" &&
+      "displayName" in session &&
+      typeof session.displayName === "string"
+    ) {
+      return session as StoredSession;
+    }
+  } catch {
+    // Un valor corrupto no debe impedir abrir la aplicación.
+  }
+
+  window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  return null;
+}
+
+function saveStoredSession(session: StoredSession) {
+  window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+}
 
 function AppBackground() {
   return (
@@ -36,33 +97,87 @@ function AppBackground() {
 }
 
 function App() {
+  const [restoredSession] = useState(() => readStoredSession());
+  const [initialRoute] = useState(() => readRoute());
   // Estado temporal para navegar sin instalar un router.
-  const [screen, setScreen] = useState<Screen>("welcome");
+  const [screen, setScreen] = useState<Screen>(
+    restoredSession && ["lobby", "room"].includes(initialRoute.screen)
+      ? initialRoute.screen
+      : restoredSession
+        ? "lobby"
+        : initialRoute.screen,
+  );
   const [loginNotice, setLoginNotice] = useState("");
 
-  // El JWT vive en React y se pierde al recargar la página.
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [sessionUserId, setSessionUserId] = useState<number | null>(null);
-  const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
+  // Se restaura solo para esta pestaña; la API vuelve a validar el JWT al cargar el lobby.
+  const [sessionToken, setSessionToken] = useState<string | null>(
+    restoredSession?.token ?? null,
+  );
+  const [sessionUserId, setSessionUserId] = useState<number | null>(
+    restoredSession?.userId ?? null,
+  );
+  const [selectedGameId, setSelectedGameId] = useState<number | null>(
+    restoredSession && initialRoute.screen === "room" ? initialRoute.gameId : null,
+  );
   // Nombre público del usuario autenticado, devuelto por POST /api/auth/login.
   const [sessionDisplayName, setSessionDisplayName] = useState<string | null>(
-    null,
+    restoredSession?.displayName ?? null,
   );
   const [isEntering, setIsEntering] = useState(false);
-  const handleAuthenticationError = useCallback(() => {
+  const navigate = useCallback(
+    (nextScreen: Screen, gameId: number | null = null, replace = false) => {
+      const hash = hashForRoute(nextScreen, gameId);
+      if (window.location.hash !== hash) {
+        window.history[replace ? "replaceState" : "pushState"](null, "", hash);
+      }
+      setScreen(nextScreen);
+      setSelectedGameId(nextScreen === "room" ? gameId : null);
+    },
+    [],
+  );
+  const clearSession = useCallback((nextScreen: Screen = "home") => {
+    window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
     setSessionToken(null);
     setSessionUserId(null);
-    setSelectedGameId(null);
     setSessionDisplayName(null);
+    navigate(nextScreen, null, true);
+  }, [navigate]);
+  const handleAuthenticationError = useCallback(() => {
+    clearSession("login");
     setLoginNotice("Tu sesión ha caducado. Inicia sesión de nuevo.");
-    setScreen("login");
-  }, []);
+  }, [clearSession]);
+  const handleDisplayNameUpdated = useCallback(
+    (displayName: string) => {
+      setSessionDisplayName(displayName);
+      if (sessionToken && sessionUserId !== null) {
+        saveStoredSession({ token: sessionToken, userId: sessionUserId, displayName });
+      }
+    },
+    [sessionToken, sessionUserId],
+  );
   const handleEnter = () => {
     if (isEntering) return;
 
     setIsEntering(true);
-    window.setTimeout(() => setScreen("home"), 3200);
+    window.setTimeout(() => navigate("home"), 3200);
   };
+  useEffect(() => {
+    const restoreRoute = () => {
+      const route = readRoute();
+      if ((route.screen === "lobby" || route.screen === "room") && !sessionToken) {
+        navigate("login", null, true);
+        return;
+      }
+      setScreen(route.screen);
+      setSelectedGameId(route.screen === "room" ? route.gameId : null);
+    };
+    window.addEventListener("popstate", restoreRoute);
+    window.addEventListener("hashchange", restoreRoute);
+    return () => {
+      window.removeEventListener("popstate", restoreRoute);
+      window.removeEventListener("hashchange", restoreRoute);
+    };
+  }, [navigate, sessionToken]);
   // Con sesión iniciada, mostramos las partidas del usuario.
 
   if (screen === "welcome") {
@@ -139,7 +254,7 @@ function App() {
             gameId={selectedGameId}
             token={sessionToken}
             userId={sessionUserId}
-            onBack={() => setScreen("lobby")}
+            onBack={() => navigate("lobby")}
             onAuthenticationError={handleAuthenticationError}
           />
         </div>
@@ -156,17 +271,9 @@ function App() {
             token={sessionToken}
             userId={sessionUserId!}
             displayName={sessionDisplayName ?? ""}
-            onDisplayNameUpdated={setSessionDisplayName}
-            onLogout={() => {
-              setSessionToken(null);
-              setScreen("home");
-              setSessionUserId(null);
-              setSessionDisplayName(null);
-            }}
-            onOpenGame={(gameId) => {
-              setSelectedGameId(gameId);
-              setScreen("room");
-            }}
+            onDisplayNameUpdated={handleDisplayNameUpdated}
+            onLogout={() => clearSession()}
+            onOpenGame={(gameId) => navigate("room", gameId)}
             onAuthenticationError={handleAuthenticationError}
           />
         </div>
@@ -183,7 +290,7 @@ function App() {
         <section className="ambient-card relative z-10 mx-auto max-w-md rounded-3xl border border-[#2B2B2B] bg-[#141414] p-6 shadow-2xl shadow-black/30 sm:p-8">
           <button
             type="button"
-            onClick={() => setScreen("home")}
+            onClick={() => navigate("home")}
             className="text-sm font-semibold text-[#A3A3A3] hover:text-[#A3E635]"
           >
             ← Volver
@@ -201,14 +308,19 @@ function App() {
             <RegisterForm
               onRegistered={() => {
                 setLoginNotice("Cuenta creada. Inicia sesión para continuar.");
-                setScreen("login");
+                navigate("login");
               }}
             />
           ) : (
             <LoginForm
               notice={loginNotice}
               onLoggedIn={(response) => {
-                // Guardamos el token para usarlo en las peticiones autenticadas.
+                // Guardamos la sesión de la pestaña y la recuperamos tras F5.
+                saveStoredSession({
+                  token: response.token,
+                  userId: response.user.id,
+                  displayName: response.user.displayName,
+                });
                 setSessionToken(response.token);
                 setSessionUserId(response.user.id);
                 setSessionDisplayName(response.user.displayName);
@@ -216,7 +328,7 @@ function App() {
                 setLoginNotice("");
 
                 // Volvemos a la portada.
-                setScreen("lobby");
+                navigate("lobby");
               }}
             />
           )}
@@ -262,7 +374,7 @@ function App() {
 
                   <button
                     type="button"
-                    onClick={() => setSessionToken(null)}
+                    onClick={() => clearSession()}
                     className="rounded-xl border border-[#3D3D3D] bg-[#1A1A1A] px-5 py-3.5 font-bold text-[#F8FAFC] transition hover:border-[#A3E635] hover:bg-[#242424]"
                   >
                     Cerrar sesión
@@ -272,7 +384,7 @@ function App() {
                 <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                   <button
                     type="button"
-                    onClick={() => setScreen("register")}
+                    onClick={() => navigate("register")}
                     className="rounded-xl bg-gradient-to-b from-[#F8FAFC] via-[#D4D4D4] to-[#A3A3A3] px-5 py-3.5 font-bold text-[#090909] shadow-lg shadow-black/20 transition hover:from-white hover:to-[#D4D4D4]"
                   >
                     Crear cuenta
@@ -280,7 +392,7 @@ function App() {
 
                   <button
                     type="button"
-                    onClick={() => setScreen("login")}
+                    onClick={() => navigate("login")}
                     className="rounded-xl border border-[#3D3D3D] bg-[#1A1A1A] px-5 py-3.5 font-bold text-[#F8FAFC] transition hover:border-[#A3E635] hover:bg-[#242424]"
                   >
                     Iniciar sesión
