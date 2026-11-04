@@ -11,7 +11,7 @@ La base está preparada, pero los retos los implementas tú. Trabaja un bloque c
 - Partidas individuales y un historial propio persistente.
 - Partidas de dos jugadores con código de invitación y cinco preguntas compartidas: responde primero el jugador 1 y después el 2 en cada pregunta, un punto por acierto y ganador o empate al final. La solución se revela solo cuando ambos han respondido esa pregunta.
 - Swagger para probar las rutas HTTP y Socket.IO para avisos en tiempo real.
-- Backend y PostgreSQL en Railway, frontend React + Vite en otro repo y publicado en Vercel.
+- Backend en Render con PostgreSQL, frontend React + Vite en otro repo y publicado en Vercel.
 
 Primero funcionará todo por HTTP. Después los sockets avisarán de los cambios. El servidor decide turnos y puntos; PostgreSQL guarda el estado. La primera entrega usa una instancia del backend y no necesita Redis ni varios servidores.
 
@@ -292,10 +292,10 @@ Todos parten como pendientes. **Implementado** significa que el alumno completó
 | 17 | [Juega por turnos mediante HTTP](retos/17-turnos-concurrencia.md) | Pendiente |
 | 18 | [Añade avisos en tiempo real](retos/18-socket-io.md) | Pendiente |
 | 19 | [Recupera una partida al reconectar](retos/19-reconexion.md) | Pendiente |
-| 20 | [Conecta un frontend mínimo](retos/20-frontend.md) | Pendiente |
-| 20B | [Dale claridad a la experiencia de juego](retos/20b-jugabilidad.md) | Pendiente |
-| 21 | [Despliega backend, DB y frontend](retos/21-despliegue.md) | Pendiente |
-| 22 | [Entrega y revisión final](retos/22-entrega-final.md) | Pendiente |
+| 20 | [Conecta un frontend mínimo](retos/20-frontend.md) | Completado y aprobado |
+| 20B | [Dale claridad a la experiencia de juego](retos/20b-jugabilidad.md) | Completado y aprobado |
+| 21 | [Despliega backend, DB y frontend](retos/21-despliegue.md) | Completado y aprobado |
+| 22 | [Entrega y revisión final](retos/22-entrega-final.md) | Completado y aprobado |
 
 ## Entrega y despliegue
 
@@ -325,9 +325,9 @@ WHERE email = 'admin-local@ejemplo.com';
 
 No subas al repositorio contraseñas, tokens ni el archivo `.env`.
 
-En el reto 06 se añadirán instrucciones comprobadas para PostgreSQL en Railway, Prisma y sus versiones. Para trabajar desde el PC, el valor de `DATABASE_PUBLIC_URL` de Railway se guarda como `DATABASE_URL` en el `.env` local; las direcciones privadas `railway.internal` se usan entre servicios de Railway. En el 21 se documentarán URLs, variables, migraciones y recuperación. Desarrollo y pruebas no usarán la DB de producción. Los secretos se configuran en el alojamiento; el frontend solo recibe la URL pública de la API.
+Para trabajar desde el PC, usa una conexión externa de PostgreSQL solo en el `.env` local o en pgAdmin 4; no la subas al repositorio. En el reto 21 se documentan Render, PostgreSQL, Vercel, variables, migraciones y recuperación. Desarrollo y pruebas no usarán la DB de producción. Los secretos se configuran en el alojamiento; el frontend solo recibe la URL pública de la API.
 
-El despliegue propuesto usa Railway para backend y DB y Vercel para frontend. Revisaremos disponibilidad, costes y planes desde el reto 06 y de nuevo antes del despliegue final: no se presupone alojamiento gratuito permanente. No ejecutes un seed de práctica ni un reset contra producción.
+El despliegue usa Render para backend, PostgreSQL como servicio independiente y Vercel para frontend. Revisaremos disponibilidad, costes y planes antes del despliegue final: no se presupone alojamiento gratuito permanente. No ejecutes un seed de práctica ni un reset contra producción.
 
 ## Fuera del alcance inicial
 

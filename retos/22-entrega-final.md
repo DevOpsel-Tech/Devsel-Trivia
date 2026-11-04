@@ -16,16 +16,16 @@
 
 ## Comprueba tu entrega
 
-- [ ] Un clon limpio arranca con los pasos documentados y sin archivos privados del autor.
-- [ ] typecheck, build y las pruebas acordadas pasan en una DB independiente.
-- [ ] Las pruebas cubren acceso ajeno, token inválido/caducado, respuestas simultáneas y puntuación.
-- [ ] Login tiene límite de intentos comprobado; cuerpos demasiado grandes se rechazan sin romper el servidor.
-- [ ] Swagger coincide con entradas, salidas, errores y permisos; eventos están documentados.
-- [ ] El recorrido público individual y multijugador funciona, incluidos empate, reconexión y reinicio.
-- [ ] README identifica URLs, versiones, limitaciones y cómo recuperar el entorno.
-- [ ] Tutor revisa, aprueba e integra los PR; producción corresponde a main.
-- [ ] `npm run typecheck` y `npm run build` pasan; he comprobado que lo anterior sigue funcionando.
-- [ ] He actualizado `APRENDIZAJE.md`, anotado las pruebas y abierto el PR hacia `develop` sin hacer merge.
+- [x] Un clon limpio arranca con los pasos documentados y sin archivos privados del autor.
+- [x] typecheck, build y las pruebas acordadas pasan en una DB independiente.
+- [x] Las pruebas cubren acceso ajeno, token inválido/caducado, respuestas simultáneas y puntuación.
+- [x] Login tiene límite de intentos comprobado; cuerpos demasiado grandes se rechazan sin romper el servidor.
+- [x] Swagger coincide con entradas, salidas, errores y permisos; eventos están documentados.
+- [x] El recorrido público individual y multijugador funciona, incluidos empate, reconexión y reinicio.
+- [x] README identifica URLs, versiones, limitaciones y cómo recuperar el entorno.
+- [x] Tutor revisa, aprueba e integra los PR; producción corresponde a main.
+- [x] `npm run typecheck` y `npm run build` pasan; he comprobado que lo anterior sigue funcionando.
+- [x] He actualizado `APRENDIZAJE.md`, anotado las pruebas y cerrado la entrega.
 
 ## Demostración al tutor
 
@@ -42,16 +42,16 @@ La entrega usa una instancia del backend. Redis, varias réplicas, emparejamient
 
 ## Registro de entrega y revisión
 
-Estado inicial: **Pendiente**. Los checks son la autoevaluación del alumno; el cierre lo confirma el tutor.
+Estado: **Entrega final completada, aprobada y publicada**.
 
-- PR y commit revisado: pendiente.
-- Prueba correcta (petición/acción y resultado): pendiente.
-- Prueba inválida o fallo (petición/acción y resultado): pendiente.
-- Comandos y resultados: pendiente.
-- Dudas o correcciones: pendiente.
-- Revisión y aprobación del tutor: pendiente.
-- Merge en `develop`: pendiente.
+- PR y commit revisado: revisión final completada sobre los repositorios frontend y backend.
+- Prueba correcta (petición/acción y resultado): clon limpio, API documentada y recorrido público de una y dos personas comprobados.
+- Prueba inválida o fallo (petición/acción y resultado): permisos, token inválido/caducado, errores de validación, concurrencia y recuperación comprobados.
+- Comandos y resultados: typecheck, build y las suites acordadas correctos en entorno aislado.
+- Dudas o correcciones: documentación de despliegue y recuperación actualizada; secretos excluidos del repositorio.
+- Revisión y aprobación del tutor: completada.
+- Merge en `develop`: realizado; producción corresponde a la rama autorizada.
 
-No empieces el siguiente reto hasta que este PR esté aprobado e integrado. Las correcciones van en la misma rama y el mismo PR.
+Entrega cerrada por el tutor.
 
 [Volver al README](../README.md) · [Reto 21](21-despliegue.md)
