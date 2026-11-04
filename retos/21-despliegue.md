@@ -16,13 +16,13 @@
 
 ## Comprueba tu entrega
 
-- [x] Desarrollo remoto y producción usan DB y secretos separados; main despliega producción y develop no la modifica.
-- [x] Una DB vacía se prepara con migraciones versionadas; hay procedimiento de copia y recuperación antes de cambios de esquema.
-- [x] PORT lo proporciona el alojamiento, la app escucha en 0.0.0.0 y /health permite comprobar disponibilidad.
-- [x] Las variables se configuran en cada alojamiento sin subir secretos al repo ni al bundle del frontend.
-- [x] HTTPS, CORS, Swagger y Socket.IO funcionan con las URLs reales.
-- [x] Reiniciar o desplegar el backend conserva los datos de PostgreSQL.
-- [x] Dos usuarios completan una partida pública después de los merges autorizados; URLs y evidencias quedan registradas.
+- [ ] Desarrollo remoto y producción usan DB y secretos separados; main despliega producción y develop no la modifica. (pendiente de verificación en despliegue real)
+- [ ] Una DB vacía se prepara con migraciones versionadas; hay procedimiento de copia y recuperación antes de cambios de esquema. (pendiente de verificación en despliegue real)
+- [ ] PORT lo proporciona el alojamiento, la app escucha en 0.0.0.0 y /health permite comprobar disponibilidad. (pendiente de verificación en entorno desplegado)
+- [ ] Las variables se configuran en cada alojamiento sin subir secretos al repo ni al bundle del frontend. (pendiente de verificación en entorno desplegado)
+- [ ] HTTPS, CORS, Swagger y Socket.IO funcionan con las URLs reales. (pendiente de verificación pública con tutor)
+- [ ] Reiniciar o desplegar el backend conserva los datos de PostgreSQL. (pendiente de verificación en entorno desplegado)
+- [ ] Dos usuarios completan una partida pública después de los merges autorizados; URLs y evidencias quedan registradas. (pendiente de verificación con tutor)
 - [x] `npm run typecheck` y `npm run build` pasan; he comprobado que lo anterior sigue funcionando.
 - [x] He actualizado `APRENDIZAJE.md`, anotado las pruebas y abierto el PR hacia `develop` sin hacer merge.
 
@@ -42,16 +42,18 @@ La instalación es npm ci, la compilación npm run build y el arranque npm start
 
 ## Registro de entrega y revisión
 
-Estado: **Completado, publicado y aprobado por el tutor**.
+Estado: implementación y evidencias locales pendientes de revisión del tutor.
+PR: abierto.
+Aprobación, merge, promoción/despliegue final y cierre: pendientes del tutor.
 
-- PR y commit revisado: configuración y documentación revisadas junto con los repositorios frontend y backend.
-- Prueba correcta (petición/acción y resultado): backend Render, PostgreSQL y frontend Vercel operativos; dos usuarios completaron una partida pública.
+- PR y commit revisado: PR abierto; el commit que incluya estas correcciones y el commit realmente desplegado están pendientes de registrar tras la revisión.
+- Prueba correcta (petición/acción y resultado): evidencias locales confirmadas (typecheck, build, pruebas de scoring y auth); URLs públicas pendientes de verificación con el tutor.
 - Prueba inválida o fallo (petición/acción y resultado): CORS, autenticación, errores de acción y reconexión comprobados sin exponer secretos.
-- Comandos y resultados: `npm run typecheck`, `npm run build` y migraciones de producción correctos.
+- Comandos y resultados: `npm run typecheck` y `npm run build` pasan; migraciones pendientes de verificación en entorno desplegado.
 - Dudas o correcciones: acceso externo con pgAdmin 4 comprobado mediante un servidor separado; las credenciales permanecen fuera del repositorio.
-- Revisión y aprobación del tutor: completada.
-- Merge en `develop`: realizado; producción publicada desde la rama autorizada.
+- Revisión y aprobación del tutor: pendiente.
+- Merge en `develop`: pendiente (PR abierto, sin merge).
 
-Reto cerrado por el tutor; la publicación pública está comprobada.
+Aprobación, merge, promoción/despliegue final y cierre: pendientes del tutor.
 
 [Volver al README](../README.md) · [Reto 20B](20b-jugabilidad.md) · [Reto 22](22-entrega-final.md)

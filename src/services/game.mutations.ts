@@ -15,6 +15,16 @@ import {
 } from "./game.types.js";
 import { getRandomQuestions } from "./game.queries.js";
 
+function obtenerPosicionSolucion(
+  choices: { position: number; isCorrect: boolean }[],
+): number {
+  const correctChoices = choices.filter((choice) => choice.isCorrect);
+  if (correctChoices.length !== 1) {
+    throw new Error("Cada pregunta debe tener exactamente una opción correcta");
+  }
+  return correctChoices[0].position;
+}
+
 /*Genera un código de invitación de 6 caracteres ( letras * números)
  Se repite hasta encontrar uno que no exista en la base.*/
 // Genera un código de invitación de 6 caracteres único (no existente en la BD).
@@ -356,9 +366,7 @@ userId: number,
                 gameId,
                 position,
                 statement: question.statement,
-                solution: question.choices.findIndex(
-                  (choice) => choice.isCorrect,
-                ),
+                solution: obtenerPosicionSolucion(question.choices),
                 questionId: question.id,
                 choices: {
                   create: question.choices.map((choice) => ({
@@ -466,7 +474,7 @@ export async function startGame(
                 gameId: game.id,
                 position: indice,
                 statement: pregunta.statement,
-                solution: pregunta.choices.findIndex((c) => c.isCorrect),
+                solution: obtenerPosicionSolucion(pregunta.choices),
                 questionId: pregunta.id,
                 choices: {
                   create: pregunta.choices.map((c) => ({
@@ -549,8 +557,8 @@ export async function createGame(userId: number) {
           position: indice,
           // Copias: si cambia el catálogo, la partida no se altera.
           statement: pregunta.statement,
-          // La solución es la posición de la opción correcta (0..3).
-          solution: pregunta.choices.findIndex((choice) => choice.isCorrect),
+          // La solución usa la posición persistida de la opción correcta.
+          solution: obtenerPosicionSolucion(pregunta.choices),
           questionId: pregunta.id, // origen, opcional
           choices: {
             create: pregunta.choices.map((choice) => ({

@@ -29,6 +29,10 @@ import {
 // Abrir el puerto es responsabilidad de server.ts.
 export const app = express();
 
+// Render termina el proxy inverso antes de llegar a Express. Confiamos solo
+// en un salto para que req.ip represente al cliente en el límite de login.
+app.set("trust proxy", 1);
+
 app.use(
   cors({
     origin(origin, callback) {
@@ -530,13 +534,13 @@ app.use("/api/categories", categoryRouter);
  * /api/auth/login:
  *   post:
  *     summary: Iniciar sesión
- *     description: Comprueba el email y la contraseña y devuelve un token JWT.
+ *     description: Comprueba el email y la contraseña y devuelve un token JWT. Acepta un máximo de 5 intentos por IP cada 15 minutos; el exceso devuelve 429.
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: "#/components/schemas/RegistroEntrada"
+ *             $ref: "#/components/schemas/LoginEntrada"
  *     responses:
  *       200:
  *         description: Inicio de sesión correcto
@@ -556,6 +560,26 @@ app.use("/api/categories", categoryRouter);
  *         description: Datos no válidos
  *       401:
  *         description: Email o contraseña incorrectos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       429:
+ *         description: Demasiados intentos de inicio de sesión desde esta IP. Reintenta cuando indique Retry-After.
+ *         headers:
+ *           Retry-After:
+ *             description: Segundos restantes hasta que la IP pueda volver a intentarlo.
+ *             schema:
+ *               type: integer
+ *               minimum: 1
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *             example:
+ *               error:
+ *                 code: LOGIN_RATE_LIMITED
+ *                 message: Demasiados intentos de inicio de sesión. Inténtalo de nuevo más tarde.
  */
 
 // Ruta de registro de usuarios.

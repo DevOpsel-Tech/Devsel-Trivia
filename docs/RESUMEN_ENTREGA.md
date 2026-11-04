@@ -2,38 +2,33 @@
 
 ## Estado general
 
-Los retos 20, 20B, 21 y 22 están completados, comprobados y aprobados por el tutor. Los cambios de frontend y backend quedaron integrados y la aplicación está publicada con backend en Render, PostgreSQL persistente y frontend en Vercel.
+Los retos 21 y 22 tienen implementación y evidencias locales registradas. La revisión del tutor, aprobación, merge, publicación final y cierre siguen pendientes. No se afirma integración ni estado de producción sin evidencia pública verificable.
 
-## Últimas actualizaciones realizadas
+## Actualizaciones y comprobaciones locales
 
-- Se completó el registro del reto 20: registro, inicio de sesión, perfil, listado e historial de partidas, creación y entrada por código, sala, turnos, respuestas, reconexión y pantalla final.
-- Se completó el reto 20B: nombres públicos, perfil editable, migración de `displayName`, historial paginado, estados de sala, confirmación de jugadores, borrado de salas, evento `game:deleted`, turnos y resultado de ganar, perder o empate.
-- Se completó el reto 21: backend publicado en Render, PostgreSQL configurado como servicio independiente, frontend publicado en Vercel y conexión administrativa comprobada desde pgAdmin 4 en un PC externo mediante un servidor registrado aparte.
-- Se creó `docs/despliegue.md` con el procedimiento de instalación, compilación, migración de Prisma, arranque, variables de entorno y comprobaciones de publicación.
-- Se cerró el reto 22 como entrega final: documentación, pruebas, despliegue, recorrido público y revisión del tutor completados.
-- Se actualizaron `APRENDIZAJE.md`, `README.md` y los registros de entrega de los retos 20, 20B, 21 y 22.
+- El reto 21 documenta el procedimiento de despliegue con Render, PostgreSQL y Vercel.
+- El reto 22 incorpora pruebas locales, Swagger y la documentación de entrega.
+- La puntuación de partidas nuevas usa la misma posición para `solution` y `GameChoice`; la partida histórica investigada no se modificó.
+- `POST /api/auth/login` limita a cinco intentos por IP en 15 minutos; el sexto devuelve `429`, `LOGIN_RATE_LIMITED` y `Retry-After`.
+- `npm.cmd run typecheck`, `npm.cmd run build`, la prueba de puntuación aislada y la prueba del límite de login se ejecutaron correctamente el 04/11/2026.
 
-## Comprobaciones técnicas
+## Evidencias pendientes del tutor
 
-- `npm run typecheck` correcto.
-- `npm run build` correcto.
-- `git diff --check` correcto, sin errores de espacios o formato.
-- Los checks de los retos 20, 20B, 21 y 22 están marcados como completados.
+- URL pública del frontend: pendiente de completar con la URL verificada.
+- URL pública del backend: pendiente de completar con la URL verificada.
+- URL pública de Swagger: pendiente de completar con `<backend>/docs` verificado.
+- Commit y versión realmente desplegados de frontend y backend: pendientes de confirmar en las plataformas.
+- Fecha y resultado de `/health`, Swagger, login y partida pública de dos personas: pendientes de registrar tras la comprobación pública.
+- Revisión, aprobación, merge y cierre: pendientes del tutor; el PR permanece abierto.
+- Coordinación frontend: [PR #3 de trivia-app-frontend](https://github.com/josepracticas123/trivia-app-frontend/pull/3), vinculado y pendiente de la misma revisión.
 
-## Seguridad del repositorio
+## Seguridad
 
-No se han subido archivos comprometidos ni secretos al repositorio.
-
-- `.env` y `tests/.env.test` están ignorados por `.gitignore`.
-- No hay claves privadas, certificados, credenciales, cadenas reales de conexión PostgreSQL ni valores reales de `JWT_SECRET` versionados.
-- Las apariciones de contraseñas, secretos y URLs de base de datos que existen en el código corresponden a variables vacías de ejemplo, documentación o datos simulados para pruebas.
-- Las credenciales de Render, Vercel, PostgreSQL y pgAdmin 4 se mantienen fuera de Git y no se incluyen en las variables públicas `VITE_*` del frontend.
+No se versionan credenciales, cadenas de conexión, contraseñas, tokens ni valores de `JWT_SECRET`. Las URLs públicas pueden documentarse cuando estén verificadas; no son secretos.
 
 ## Documentos relacionados
 
 - [Aprendizaje](../APRENDIZAJE.md)
 - [Guía de despliegue](despliegue.md)
-- [Reto 20](../retos/20-frontend.md)
-- [Reto 20B](../retos/20b-jugabilidad.md)
 - [Reto 21](../retos/21-despliegue.md)
 - [Reto 22](../retos/22-entrega-final.md)

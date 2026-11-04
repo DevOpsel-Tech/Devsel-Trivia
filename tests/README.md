@@ -38,6 +38,7 @@ tests/
     │   └── db-guard.ts
     ├── acceso-ajeno.test.ts
     ├── db-guard.test.ts
+    ├── game.answer.scoring.evidence.test.ts
     ├── game.mutation.concurrency.test.ts
     └── game.turns.concurrency.test.ts
 ```
@@ -150,10 +151,11 @@ tanto con filtros (`search`, `categoryId`) como sin ellos.
 
 ## Pruebas de integración (con base de datos real)
 
-Los ficheros de `tests/integration/` **no usan mocks**: se conectan a una
-base de datos PostgreSQL real para comprobar reglas que solo tienen sentido
-contra la BBDD (por ejemplo, que un usuario no pueda ver la partida de otro,
-o que dos operaciones simultáneas no corrompan el estado).
+Los ficheros de `tests/integration/` se conectan a una base de datos PostgreSQL
+real para comprobar reglas que solo tienen sentido contra la BBDD. Algunos
+tests controlan dependencias no relevantes para la evidencia (por ejemplo, la
+selección aleatoria de preguntas), pero mantienen reales las escrituras y
+lecturas verificadas en PostgreSQL.
 
 Se ejecutan aparte, con su propia base de datos:
 
@@ -169,6 +171,30 @@ Todas las pruebas que crean o borran datos llaman antes a
 `asegurarBaseDePruebas()` (`integration/helpers/db-guard.ts`), que aborta si
 `DATABASE_URL` no apunta a `trivia_test` en `localhost`. Así no se puede
 borrar por error la base de desarrollo o producción.
+
+### Qué comprueba `integration/game.answer.scoring.evidence.test.ts`
+
+- Crea con un prefijo identificable cinco preguntas de catálogo, cada una con
+  cuatro opciones en posiciones 1–4 y exactamente una correcta. Controla
+  únicamente la selección aleatoria para garantizar que se copien a dos
+  partidas individuales nuevas con la misma posición de solución.
+- Envía las respuestas por HTTP a `POST /api/games/:id/answers`; en cada
+  partida responde incorrectamente las cuatro primeras preguntas y elige una
+  opción correcta o incorrecta en la quinta.
+- Inspecciona catálogo, `GameQuestion`, `GameChoice`, la petición, resultado
+  HTTP, `Answer` y puntuación persistida. Imprime los IDs y posiciones como
+  JSON `EVIDENCIA_*` para conservar una traza reproducible por ejecución.
+- El caso correcto termina con `isCorrect: true`, `score: 1` y puntuación final
+  1; el caso incorrecto termina con `isCorrect: false`, `score: 0` y puntuación
+  final 0. Ambos devuelven `finished: true`.
+- Solo elimina las partidas, usuario, preguntas y categoría cuyos IDs creó el
+  test, y aborta si la base no es `trivia_test` en localhost.
+
+Ejecución aislada con salida de evidencia:
+
+```bash
+npm run test:integration -- tests/integration/game.answer.scoring.evidence.test.ts --silent=false
+```
 
 ### Qué comprueba `integration/acceso-ajeno.test.ts`
 

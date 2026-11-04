@@ -1,8 +1,18 @@
 # Despliegue: Render, PostgreSQL y Vercel
 
-Estado registrado el 04/11/2026: el backend está desplegado en Render, PostgreSQL está operativo y el frontend está desplegado en Vercel. La conexión remota de PostgreSQL también se comprobó desde pgAdmin 4 en un PC externo, creando un servidor nuevo con los datos de conexión del servicio; no se modificó el servidor de ejemplo de pgAdmin.
+Estado: implementación y evidencias locales; pendiente revisión del tutor.
+PR: abierto.
 
-Las URLs públicas y valores de conexión no se guardan en el repositorio. Deben constar en la configuración de cada plataforma y, si hacen falta para la revisión, compartirse por el canal seguro acordado con el tutor.
+Las URLs públicas verificadas de frontend, backend y Swagger pueden registrarse en este documento. Los valores de conexión y credenciales deben constar solo en la configuración privada de cada plataforma o compartirse por el canal seguro acordado con el tutor.
+
+## Evidencias públicas pendientes
+
+- Frontend: pendiente de completar con la URL pública verificada.
+- Backend: pendiente de completar con la URL pública verificada.
+- Swagger: pendiente de completar con la URL pública verificada (`<backend>/docs`).
+- Commit backend desplegado: pendiente de confirmar.
+- Commit frontend desplegado: pendiente de confirmar.
+- Comprobaciones públicas (`/health`, Swagger, login y partida de dos personas): pendientes de fecha y resultado verificables.
 
 ## Backend en Render
 

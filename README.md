@@ -294,8 +294,8 @@ Todos parten como pendientes. **Implementado** significa que el alumno completó
 | 19 | [Recupera una partida al reconectar](retos/19-reconexion.md) | Pendiente |
 | 20 | [Conecta un frontend mínimo](retos/20-frontend.md) | Completado y aprobado |
 | 20B | [Dale claridad a la experiencia de juego](retos/20b-jugabilidad.md) | Completado y aprobado |
-| 21 | [Despliega backend, DB y frontend](retos/21-despliegue.md) | Completado y aprobado |
-| 22 | [Entrega y revisión final](retos/22-entrega-final.md) | Completado y aprobado |
+| 21 | [Despliega backend, DB y frontend](retos/21-despliegue.md) | Implementación y evidencias locales; pendiente revisión del tutor |
+| 22 | [Entrega y revisión final](retos/22-entrega-final.md) | Implementación y evidencias locales; pendiente revisión del tutor |
 
 ## Entrega y despliegue
 

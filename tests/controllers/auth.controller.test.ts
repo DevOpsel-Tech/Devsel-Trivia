@@ -3,6 +3,7 @@ import express from "express";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { authRouter } from "../../src/routes/auth.routes.js";
+import { resetLoginRateLimitForTests } from "../../src/middlewares/login-rate-limit.middleware.js";
 import { loginUser, registerUser } from "../../src/services/auth.services.js";
 // Simulamos Prisma para no necesitar DATABASE_URL en los tests.
 vi.mock("../../src/lib/prisma.js", () => ({
@@ -29,6 +30,7 @@ describe("POST /api/auth/login", () => {
   beforeEach(() => {
     // Usamos un secreto exclusivo para estas pruebas.
     process.env.JWT_SECRET = "secreto-solo-para-tests";
+    resetLoginRateLimitForTests();
     vi.clearAllMocks();
   });
 
@@ -90,6 +92,35 @@ describe("POST /api/auth/login", () => {
 
     expect(contraseñaIncorrecta.body).toEqual(emailInexistente.body);
     expect(contraseñaIncorrecta.body.error.code).toBe("INVALID_CREDENTIALS");
+  });
+
+  it("limita el sexto intento de la misma IP con 429 y Retry-After", async () => {
+    vi.mocked(loginUser).mockResolvedValue(null);
+
+    for (let intento = 0; intento < 5; intento++) {
+      const respuesta = await request(app)
+        .post("/api/auth/login")
+        .set("X-Forwarded-For", "203.0.113.10")
+        .send({ email: "ana@email.com", password: "incorrecta123" });
+
+      expect(respuesta.status).toBe(401);
+    }
+
+    const limitada = await request(app)
+      .post("/api/auth/login")
+      .set("X-Forwarded-For", "203.0.113.10")
+      .send({ email: "ana@email.com", password: "incorrecta123" });
+
+    expect(limitada.status).toBe(429);
+    expect(Number(limitada.headers["retry-after"])).toBeGreaterThan(0);
+    expect(limitada.body).toEqual({
+      error: {
+        code: "LOGIN_RATE_LIMITED",
+        message:
+          "Demasiados intentos de inicio de sesión. Inténtalo de nuevo más tarde.",
+      },
+    });
+    expect(loginUser).toHaveBeenCalledTimes(5);
   });
 });
 
