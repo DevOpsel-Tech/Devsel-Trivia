@@ -422,7 +422,14 @@ function App() {
           </span>
         </header>
 
-        <section className="ambient-card relative overflow-hidden rounded-3xl border border-[#2B2B2B] bg-[#141414] shadow-2xl shadow-black/30">
+        <ElectricBorder
+          color="#A3E635"
+          glowColor="#BEF264"
+          borderRadius={24}
+          active={!prefersReducedMotion}
+          style={undefined}
+        >
+          <section className="ambient-card relative z-10 overflow-hidden rounded-3xl border border-[#2B2B2B] bg-[#141414] shadow-2xl shadow-black/30">
           <LaserFlow
             className="z-0 opacity-80"
             style={{ position: "absolute", inset: 0 }}
@@ -514,7 +521,8 @@ function App() {
               </div>
             </aside>
           </div>
-        </section>
+          </section>
+        </ElectricBorder>
       </div>
     </main>
   );
