@@ -3,7 +3,7 @@ import { joinGame } from "../services/game.services.js";
 import { responderError } from "../errors/responderError.js";
 import { responderMiddlewareError } from "../errors/responderMiddlewareError.js";
 import { joinCodeSchema } from "../schemas/game.schema.js";
-import { io } from "../sockets/index.js";
+import { io, refreshPresenceForOnlineUsers } from "../sockets/index.js";
 import { prisma } from "../lib/prisma.js";
 // Un usuario se une a una sala multijugador con un código de invitación.
 export async function joinGameController(req: Request, res: Response) {
@@ -22,24 +22,26 @@ export async function joinGameController(req: Request, res: Response) {
     // El error del servicio es una clave del catálogo; se pasa directamente.
     return responderError(res, resultado.error);
   }
-  //Tras confirmar la unión en BD, leemos estado fresco para emitir los datos públicos
+  // Tras confirmar la unión, leemos el estado público actualizado.
   const gameState = await prisma.game?.findUnique({
-    where:{id:resultado.game.id},
-    select:{id:true, status:true, turnVersion:true},
+    where: { id: resultado.game.id },
+    select: { id: true, status: true, turnVersion: true },
   });
 
-  if(gameState){
-    //Avisamos a todos los sockets unidos a la sala tras el commit.
-    //Solo enviamos datos públicos: id, status, turnVersión. no enviamos soluciones
-   if (!io) {
-     console.error("Socket.IO no inicializado: no se puede emitir game:updated");
-     return responderMiddlewareError(res, "INTERNAL_SERVER_ERROR");
-   }
-   io.to(`game:${gameState.id}`).emit("game:updated", {
-      id:gameState.id,
+  if (gameState) {
+    await refreshPresenceForOnlineUsers();
+    // Notificamos a los participantes actuales y al usuario que se une.
+    if (!io) {
+      console.error("Socket.IO no inicializado: no se puede emitir game:updated");
+      return responderMiddlewareError(res, "INTERNAL_SERVER_ERROR");
+    }
+    const payload = {
+      id: gameState.id,
       status: gameState.status,
-      turnVersion:gameState.turnVersion,
-    });
+      turnVersion: gameState.turnVersion,
+    };
+    io.to(`game:${gameState.id}`).emit("game:updated", payload);
+    io.to(`user:${userId}`).emit("game:joined", payload);
   }
 
   return res.status(200).json({ id: resultado.game.id, status: resultado.game.status });

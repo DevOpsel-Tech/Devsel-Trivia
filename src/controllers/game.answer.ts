@@ -4,7 +4,7 @@ import { answerSchema } from "../schemas/answer.schema.js";
 import { idParamSchema } from "../schemas/question-id.schema.js";
 import { responderError } from "../errors/responderError.js";
 import { responderMiddlewareError } from "../errors/responderMiddlewareError.js";
-import { io } from "../sockets/index.js";
+import { io, refreshPresenceForOnlineUsers } from "../sockets/index.js";
 import { prisma } from "../lib/prisma.js";
 
 // Responde la pregunta de partida que está en el turno.
@@ -68,6 +68,9 @@ export async function answerController(req: Request, res: Response) {
       status: gameState.status,
       turnVersion: gameState.turnVersion,
     });
+    if (gameState.status === "FINISHED") {
+      await refreshPresenceForOnlineUsers();
+    }
   }
   // Modo individual: se conserva el contrato del reto 13.
   if (resultado.mode !== "MULTIPLAYER") {

@@ -120,6 +120,10 @@ Para configurar una instalación local:
 
 El modelo está en `prisma/schema.prisma`, el historial reproducible en `prisma/migrations/` y el seed en `src/lib/seed.ts`. El cliente Prisma local y los comandos CLI leen `DATABASE_URL`; las rutas de la API siguen usando datos en memoria hasta el reto 07. Un backend alojado en Railway puede usar la URL privada de PostgreSQL del mismo entorno. La CLI `migrate status` solo inspecciona el historial; `migrate dev` cambia el esquema y `seed` inserta datos.
 
+El historial autenticado se consulta en `GET /api/me/games`; admite `page`, `pageSize` y el filtro opcional `status=WAITING|ACTIVE|FINISHED` (por ejemplo, `/api/me/games?status=ACTIVE&page=1&pageSize=10`). Los contratos y las instrucciones de actualización por Socket.IO están en [docs/eventos.md](docs/eventos.md). Los eventos son avisos; el historial y el detalle se recuperan por HTTP.
+
+El lobby también puede consultar presencia mediante Socket.IO (`presence:request`) y enviar invitaciones privadas a partidas multijugador. Las conexiones requieren JWT; las invitaciones persisten en PostgreSQL y la presencia en memoria presupone una sola instancia de backend. Ver [docs/eventos.md](docs/eventos.md) para estados, límites, payloads y comportamiento al desconectarse.
+
 Las pruebas de integración (`npm run test:integration`) no usan la base de prácticas, sino una base de datos PostgreSQL **local** y separada (`trivia_test`), porque crean y borran datos. Se configura con `tests/.env.test` (ignorado por Git) y se detalla en `tests/README.md`. El comando `npm test` no toca ninguna base de datos.
 
 El reinicio acordado en el [reto 09](retos/09-relaciones.md) es una excepción puntual, con pérdida de los datos anteriores aceptada por el tutor. A partir de esa base se conserva la migración inicial y se crean migraciones nuevas para los siguientes retos. No repitas el borrado del historial ni el reset como solución habitual.
