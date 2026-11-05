@@ -86,12 +86,12 @@ function AppBackground() {
     >
       <LetterGlitch
         className="absolute inset-0"
-        glitchColors={["#FFFFFF", "#61DCA3"]}
-        baseColor="#FFFFFF"
-        baseOpacity={0.16}
+        glitchColors={["#A3E635", "#F8FAFC"]}
+        baseColor="#F8FAFC"
+        baseOpacity={0.19}
         glitchAmount={0.5}
         density={0.9}
-        speed={1}
+        speed={0.6}
         interactive={false}
         centerFade={0}
         backgroundColor="#090909"
@@ -302,6 +302,7 @@ function App() {
               token={sessionToken}
               userId={sessionUserId}
               onBack={() => navigate("lobby")}
+              onOpenGame={(gameId) => navigate("room", gameId)}
               onAuthenticationError={handleAuthenticationError}
             />
           </ElectricBorder>
@@ -463,6 +464,15 @@ function App() {
                     Sesión iniciada correctamente.
                   </p>
 
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => navigate("lobby")}
+                    className="rounded-xl bg-[#A3E635] px-5 py-3.5 font-bold text-[#090909] transition hover:bg-[#BEF264]"
+                  >
+                    Ir a tus partidas
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => clearSession()}
@@ -470,6 +480,7 @@ function App() {
                   >
                     Cerrar sesión
                   </button>
+                  </div>
                 </div>
               ) : (
                 <div className="mt-9 flex flex-col gap-3 sm:flex-row">

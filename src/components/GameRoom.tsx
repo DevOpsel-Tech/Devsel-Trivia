@@ -6,6 +6,7 @@ import { GameParticipants } from "./GameParticipants";
 import { GameResult } from "./GameResult";
 import { GameScoreboard } from "./GameScoreboard";
 import {
+  createIndividualGame,
   getGame,
   startMultiplayerGame,
   submitAnswer,
@@ -19,6 +20,7 @@ type GameRoomProps = {
   token: string;
   userId: number;
   onAuthenticationError: () => void;
+  onOpenGame: (gameId: number) => void;
 };
 
 // Evento privado que emite el backend a los participantes de una sala borrada.
@@ -30,6 +32,7 @@ export function GameRoom({
   userId,
   onBack,
   onAuthenticationError,
+  onOpenGame,
 }: GameRoomProps) {
   const [game, setGame] = useState<GameDetails | null>(null);
   // Impide que una respuesta HTTP más antigua reemplace un estado más reciente.
@@ -37,6 +40,7 @@ export function GameRoom({
   const deletedRoomTimeoutRef = useRef<number | null>(null);
   const [error, setError] = useState("");
   const [isStarting, setIsStarting] = useState(false);
+  const [isCreatingNextGame, setIsCreatingNextGame] = useState(false);
   const [selectedChoiceId, setSelectedChoiceId] = useState<number | null>(null);
   const [isAnswerSending, setIsAnswerSending] = useState(false);
   const [isQuestionCrumpling, setIsQuestionCrumpling] = useState(false);
@@ -264,6 +268,10 @@ si o es creador o falta un jugador, muestra error*/
   const currentQuestionNumber = currentQuestion
     ? currentQuestion.position + 1
     : totalQuestions;
+  const questionProgress =
+    totalQuestions > 0
+      ? Math.min(100, Math.round((currentQuestionNumber / totalQuestions) * 100))
+      : 0;
 
   const isYourTurn = isMultiplayer
     ? game?.currentTurn?.userId === userId
@@ -329,6 +337,28 @@ si o es creador o falta un jugador, muestra error*/
       setExitingQuestion(null);
     } finally {
       setIsAnswerSending(false);
+    }
+  }
+
+  async function handlePlayAgain() {
+    setError("");
+    setIsCreatingNextGame(true);
+
+    try {
+      const nextGame = await createIndividualGame(token);
+      onOpenGame(nextGame.id);
+    } catch (requestError) {
+      if (requestError instanceof ApiError && requestError.status === 401) {
+        onAuthenticationError();
+        return;
+      }
+      setError(
+        requestError instanceof ApiError
+          ? requestError.message
+          : "No se pudo crear otra partida.",
+      );
+    } finally {
+      setIsCreatingNextGame(false);
     }
   }
 
@@ -428,6 +458,19 @@ si o es creador o falta un jugador, muestra error*/
           <p className="mt-1 text-sm text-[#A3A3A3]">
             Pregunta {currentQuestionNumber} de {totalQuestions} · Tu turno
           </p>
+          <div
+            className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#2B2B2B]"
+            role="progressbar"
+            aria-label="Progreso de la partida"
+            aria-valuemin={1}
+            aria-valuemax={totalQuestions}
+            aria-valuenow={currentQuestionNumber}
+          >
+            <div
+              className="h-full rounded-full bg-[#A3E635] transition-[width] duration-300"
+              style={{ width: `${questionProgress}%` }}
+            />
+          </div>
           <p className="mt-3 text-base text-[#F8FAFC] sm:text-lg">
             {displayedQuestion.statement}
           </p>
@@ -474,6 +517,8 @@ si o es creador o falta un jugador, muestra error*/
           opponent={opponent}
           opponentName={opponentName}
           onBack={onBack}
+          onPlayAgain={isMultiplayer ? undefined : () => void handlePlayAgain()}
+          isPlayingAgain={isCreatingNextGame}
         />
       )}
     </section>
