@@ -9,8 +9,10 @@ import {
   getGame,
   startMultiplayerGame,
   submitAnswer,
+  type GameQuestion,
   type GameDetails,
 } from "../api/games";
+import "./QuestionCrumple.css";
 type GameRoomProps = {
   gameId: number;
   onBack: () => void;
@@ -37,6 +39,10 @@ export function GameRoom({
   const [isStarting, setIsStarting] = useState(false);
   const [selectedChoiceId, setSelectedChoiceId] = useState<number | null>(null);
   const [isAnswerSending, setIsAnswerSending] = useState(false);
+  const [isQuestionCrumpling, setIsQuestionCrumpling] = useState(false);
+  const [isFinalQuestionCrumpling, setIsFinalQuestionCrumpling] =
+    useState(false);
+  const [exitingQuestion, setExitingQuestion] = useState<GameQuestion | null>(null);
   const [socketNotice, setSocketNotice] = useState("");
   // Evita pulsar varias veces mientras recuperamos el estado de la partida.
   const [isRefreshingGame, setIsRefreshingGame] = useState(false);
@@ -199,7 +205,6 @@ export function GameRoom({
       // Una unión puede conservar turnVersion. Recuperamos el snapshot
       // persistido también en ese caso; loadGame evita retroceder.
       if (event.turnVersion >= latestTurnVersion.current) {
-        setSelectedChoiceId(null);
         void loadGame();
       }
     });
@@ -255,9 +260,6 @@ si o es creador o falta un jugador, muestra error*/
     (question) => question.id === currentQuestionId,
   );
   // La posición solo ordena la presentación; al enviar siempre usamos choice.id.
-  const visibleChoices = currentQuestion
-    ? [...currentQuestion.choices].sort((a, b) => a.position - b.position)
-    : [];
   const totalQuestions = game?.questions.length ?? 0;
   const currentQuestionNumber = currentQuestion
     ? currentQuestion.position + 1
@@ -283,9 +285,34 @@ si o es creador o falta un jugador, muestra error*/
 
     setError("");
     setSelectedChoiceId(choiceId);
+    setExitingQuestion(currentQuestion);
     setIsAnswerSending(true);
     try {
-      await submitAnswer(token, gameId, currentQuestion.id, choiceId);
+      const response = await submitAnswer(
+        token,
+        gameId,
+        currentQuestion.id,
+        choiceId,
+      );
+      const shouldCrumple =
+        (isMultiplayer && currentQuestionNumber === totalQuestions) ||
+        ("finished" in response && response.finished);
+      const shouldFoldSlowly =
+        isMultiplayer && currentQuestionNumber === totalQuestions;
+
+      if (shouldCrumple) {
+        setIsFinalQuestionCrumpling(shouldFoldSlowly);
+        setIsQuestionCrumpling(true);
+        await new Promise<void>((resolve) =>
+          window.setTimeout(resolve, shouldFoldSlowly ? 10000 : 620),
+        );
+        setIsQuestionCrumpling(false);
+        setIsFinalQuestionCrumpling(false);
+        setExitingQuestion(null);
+      } else {
+        setSelectedChoiceId(null);
+        setExitingQuestion(null);
+      }
       await loadGame();
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.status === 401) {
@@ -297,13 +324,21 @@ si o es creador o falta un jugador, muestra error*/
           ? requestError.message
           : "No se pudo enviar la respuesta.",
       );
+      setIsQuestionCrumpling(false);
+      setIsFinalQuestionCrumpling(false);
+      setExitingQuestion(null);
     } finally {
       setIsAnswerSending(false);
     }
   }
 
+  const displayedQuestion = exitingQuestion ?? currentQuestion;
+  const displayedChoices = displayedQuestion
+    ? [...displayedQuestion.choices].sort((a, b) => a.position - b.position)
+    : [];
+
   return (
-    <section className="ambient-card rounded-3xl border border-[#2B2B2B] bg-[#141414] p-4 shadow-2xl shadow-black/30 sm:p-8">
+    <section className="ambient-card relative z-10 rounded-3xl border border-[#2B2B2B] bg-[#141414] p-4 shadow-2xl shadow-black/30 sm:p-8">
       <button
         type="button"
         onClick={onBack}
@@ -380,19 +415,26 @@ si o es creador o falta un jugador, muestra error*/
         />
       )}
 
-      {game?.status === "ACTIVE" && currentQuestion && isYourTurn && (
-        <article className="ambient-card mx-auto mt-6 max-w-xl rounded-2xl border border-[#2B2B2B] bg-[#0D0D0D] p-4 sm:p-6">
+      {(game?.status === "ACTIVE" || exitingQuestion) &&
+        displayedQuestion &&
+        (isYourTurn || exitingQuestion) && (
+        <article
+          className={`question-card ambient-card mx-auto mt-6 max-w-xl rounded-2xl border border-[#2B2B2B] bg-[#0D0D0D] p-4 sm:p-6 ${
+            isQuestionCrumpling ? "question-card--crumpling" : ""
+          } ${isFinalQuestionCrumpling ? "question-card--final-fold" : ""}`}
+          aria-busy={isQuestionCrumpling}
+        >
           <h3 className="text-lg font-bold text-[#A3E635]">Tu pregunta</h3>
           <p className="mt-1 text-sm text-[#A3A3A3]">
             Pregunta {currentQuestionNumber} de {totalQuestions} · Tu turno
           </p>
           <p className="mt-3 text-base text-[#F8FAFC] sm:text-lg">
-            {currentQuestion.statement}
+            {displayedQuestion.statement}
           </p>
 
           <div className="mt-5 grid gap-3">
             {/* No usamos el índice: texto, posición e id proceden de la misma GameChoice. */}
-            {visibleChoices.map((choice) => (
+            {displayedChoices.map((choice) => (
               <button
                 key={choice.id}
                 type="button"
@@ -423,7 +465,7 @@ si o es creador o falta un jugador, muestra error*/
         </p>
       )}
 
-      {game?.status === "FINISHED" && (
+      {game?.status === "FINISHED" && !exitingQuestion && (
         <GameResult
           isMultiplayer={isMultiplayer}
           finalMessage={finalMessage}

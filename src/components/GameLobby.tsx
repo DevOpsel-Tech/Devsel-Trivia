@@ -279,7 +279,7 @@ export function GameLobby({
       : games.filter((game) => game.status === selectedStatus);
 
   return (
-    <section className="ambient-card rounded-3xl border border-[#2B2B2B] bg-[#141414] p-6 sm:p-8">
+    <section className="ambient-card relative z-10 rounded-3xl border border-[#2B2B2B] bg-[#141414] p-6 sm:p-8">
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-2xl font-black">Tus partidas</h2>
 
@@ -332,12 +332,16 @@ export function GameLobby({
           </button>
         ))}
       </div>
-      <div className="mt-5 flex flex-wrap gap-4">
+      <div className="mt-6 space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="mr-1 w-full text-xs font-bold tracking-[0.18em] text-[#A3A3A3] sm:w-auto">
+            CREAR PARTIDA
+          </p>
         <button
           type="button"
           onClick={handleCreateRoom}
           disabled={isCreating}
-          className="mt-5 rounded-lg bg-[#A3E635] px-4 py-2 text-sm font-bold text-[#090909] disabled:cursor-wait disabled:opacity-60"
+          className="rounded-lg bg-[#A3E635] px-4 py-2 text-sm font-bold text-[#090909] disabled:cursor-wait disabled:opacity-60"
         >
           {isCreating ? "Creando sala…" : "Crear sala"}
         </button>
@@ -346,25 +350,23 @@ export function GameLobby({
           type="button"
           onClick={handleCreateIndividualGame}
           disabled={isCreatingIndividual}
-          className="mt-5 rounded-lg border border-[#A3E635] px-4 py-2 text-sm font-bold text-[#A3E635] disabled:cursor-wait disabled:opacity-60"
+          className="rounded-lg border border-[#A3E635] px-4 py-2 text-sm font-bold text-[#A3E635] disabled:cursor-wait disabled:opacity-60"
         >
           {isCreatingIndividual ? "Creando partida…" : "Jugar en solitario"}
         </button>
+        </div>
 
-        <button
-          type="button"
-          onClick={() => setReloadKey((current) => current + 1)}
-          disabled={isLoading}
-          className="mt-5 rounded-lg border border-[#3D3D3D] px-4 py-2 text-sm font-semibold hover:border-[#A3E635] disabled:opacity-60"
-        >
-          {isLoading ? "Cargando…" : "Actualizar"}
-        </button>
-        <input
+        <div className="rounded-xl border border-[#2B2B2B] bg-[#0D0D0D] p-4">
+          <p className="text-xs font-bold tracking-[0.18em] text-[#A3A3A3]">
+            UNIRSE A UNA SALA
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input
           value={joinCode}
           onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
           placeholder="Código de sala"
           maxLength={32}
-          className="rounded-lg border border-[#3D3D3D] bg-[#0D0D0D] px-3 py-2 text-sm"
+          className="min-w-0 flex-1 rounded-lg border border-[#3D3D3D] bg-[#141414] px-3 py-2 text-sm"
         />
 
         <button
@@ -375,6 +377,19 @@ export function GameLobby({
         >
           {isJoining ? "Entrando…" : "Unirse"}
         </button>
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setReloadKey((current) => current + 1)}
+            disabled={isLoading}
+            className="rounded-lg border border-[#3D3D3D] px-4 py-2 text-sm font-semibold text-[#A3A3A3] hover:border-[#A3E635] hover:text-[#F8FAFC] disabled:opacity-60"
+          >
+            {isLoading ? "Cargando…" : "Actualizar partidas"}
+          </button>
+        </div>
       </div>
       {error && (
         <p className="mt-4 text-sm text-red-300" role="alert">

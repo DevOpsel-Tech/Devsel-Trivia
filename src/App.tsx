@@ -101,6 +101,7 @@ function AppBackground() {
     </div>
   );
 }
+
 function useReducedMotion() {
   const [reducedMotion, setReducedMotion] = useState(() =>
     window.matchMedia("(prefers-reduced-motion: reduce)").matches,
@@ -288,14 +289,22 @@ function App() {
       <main className="relative isolate min-h-screen overflow-hidden bg-[#090909]/90 px-4 py-6 text-[#F8FAFC] sm:py-10">
         <AppBackground />
         <div className="relative z-10 mx-auto max-w-4xl">
-          <GameRoom
-            key={selectedGameId}
-            gameId={selectedGameId}
-            token={sessionToken}
-            userId={sessionUserId}
-            onBack={() => navigate("lobby")}
-            onAuthenticationError={handleAuthenticationError}
-          />
+          <ElectricBorder
+            color="#A3E635"
+            glowColor="#BEF264"
+            borderRadius={24}
+            active={!prefersReducedMotion}
+            style={undefined}
+          >
+            <GameRoom
+              key={selectedGameId}
+              gameId={selectedGameId}
+              token={sessionToken}
+              userId={sessionUserId}
+              onBack={() => navigate("lobby")}
+              onAuthenticationError={handleAuthenticationError}
+            />
+          </ElectricBorder>
         </div>
       </main>
     );
@@ -306,15 +315,23 @@ function App() {
       <main className="relative isolate min-h-screen overflow-hidden bg-[#090909]/90 px-4 py-6 text-[#F8FAFC] sm:py-10">
         <AppBackground />
         <div className="relative z-10 mx-auto max-w-4xl">
-          <GameLobby
-            token={sessionToken}
-            userId={sessionUserId!}
-            displayName={sessionDisplayName ?? ""}
-            onDisplayNameUpdated={handleDisplayNameUpdated}
-            onLogout={() => clearSession()}
-            onOpenGame={(gameId) => navigate("room", gameId)}
-            onAuthenticationError={handleAuthenticationError}
-          />
+          <ElectricBorder
+            color="#A3E635"
+            glowColor="#BEF264"
+            borderRadius={24}
+            active={!prefersReducedMotion}
+            style={undefined}
+          >
+            <GameLobby
+              token={sessionToken}
+              userId={sessionUserId!}
+              displayName={sessionDisplayName ?? ""}
+              onDisplayNameUpdated={handleDisplayNameUpdated}
+              onLogout={() => clearSession()}
+              onOpenGame={(gameId) => navigate("room", gameId)}
+              onAuthenticationError={handleAuthenticationError}
+            />
+          </ElectricBorder>
         </div>
       </main>
     );
