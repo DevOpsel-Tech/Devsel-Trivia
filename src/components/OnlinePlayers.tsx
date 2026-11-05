@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { env } from "../config/env";
 import ElectricBorder from "./ElectricBorder";
@@ -40,6 +40,7 @@ type OnlinePlayersProps = {
 };
 
 const PRESENCE_LIMIT = 50;
+const INVITE_ACK_TIMEOUT_MS = 12_000;
 
 const inviteErrorMessages: Record<string, string> = {
   SELF_INVITE: "No puedes invitarte a ti mismo.",
@@ -57,6 +58,8 @@ const inviteErrorMessages: Record<string, string> = {
   VALIDATION_ERROR: "Los datos de la invitación no son válidos.",
   CONFLICT: "No se pudo completar la invitación por un cambio de estado.",
   INTERNAL_ERROR: "No se pudo completar la invitación. Inténtalo de nuevo.",
+  CONNECTION_LOST: "Se perdió la conexión. Comprueba el estado de la invitación e inténtalo de nuevo.",
+  ACK_TIMEOUT: "El servidor tarda en responder. Comprueba tu conexión e inténtalo de nuevo.",
 };
 
 function inviteErrorMessage(code: string) {
@@ -88,6 +91,21 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
   const [outgoingInvite, setOutgoingInvite] = useState<OutgoingInvite | null>(null);
   const [busyInviteId, setBusyInviteId] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+
+  const removeInvite = useCallback((inviteId: string) => {
+    setIncomingInvites((current) => current.filter((invite) => invite.inviteId !== inviteId));
+    setOutgoingInvite((current) => (current?.inviteId === inviteId ? null : current));
+    setBusyInviteId((current) => (current === inviteId ? null : current));
+  }, []);
+
+  const completeInviteAcceptance = useCallback((inviteId: string, gameId: number) => {
+    removeInvite(inviteId);
+    if (acceptedGamesRef.current.has(gameId)) return;
+
+    acceptedGamesRef.current.add(gameId);
+    onRefreshHistory();
+    onOpenGame(gameId);
+  }, [onOpenGame, onRefreshHistory, removeInvite]);
 
   useEffect(() => {
     if (incomingInvites.length === 0 && !outgoingInvite) return;
@@ -134,18 +152,8 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
         current.some((item) => item.inviteId === invite.inviteId) ? current : [...current, invite],
       );
     };
-    const removeInvite = (inviteId: string) => {
-      setIncomingInvites((current) => current.filter((invite) => invite.inviteId !== inviteId));
-      setOutgoingInvite((current) => (current?.inviteId === inviteId ? null : current));
-      setBusyInviteId((current) => (current === inviteId ? null : current));
-    };
     const onInviteAccepted = (payload: { inviteId: string; gameId: number; status: "WAITING" }) => {
-      removeInvite(payload.inviteId);
-      onRefreshHistory();
-      if (!acceptedGamesRef.current.has(payload.gameId)) {
-        acceptedGamesRef.current.add(payload.gameId);
-        onOpenGame(payload.gameId);
-      }
+      completeInviteAcceptance(payload.inviteId, payload.gameId);
     };
     const onInviteRejected = (payload: { inviteId: string }) => {
       setOutgoingInvite((current) => {
@@ -188,7 +196,7 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
       if (socketRef.current === socket) socketRef.current = null;
       requestPresenceRef.current = () => undefined;
     };
-  }, [onOpenGame, onRefreshHistory, token]);
+  }, [completeInviteAcceptance, removeInvite, token]);
 
   useEffect(() => {
     const expiredIncoming = incomingInvites.filter((invite) => new Date(invite.expiresAt).getTime() <= now);
@@ -200,11 +208,30 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
 
   function emitInvite(event: "game:invite:send" | "game:invite:accept" | "game:invite:reject" | "game:invite:cancel", payload: Record<string, string | number>) {
     return new Promise<InviteAck>((resolve) => {
-      if (!socketRef.current) {
-        resolve({ ok: false, error: "INTERNAL_ERROR" });
+      const socket = socketRef.current;
+      if (!socket?.connected) {
+        resolve({ ok: false, error: "CONNECTION_LOST" });
         return;
       }
-      socketRef.current.emit(event, payload, (ack: InviteAck) => resolve(ack));
+
+      let settled = false;
+      const finish = (ack: InviteAck) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        socket.off("disconnect", onDisconnect);
+        resolve(ack);
+      };
+      const onDisconnect = () => finish({ ok: false, error: "CONNECTION_LOST" });
+      const timeout = window.setTimeout(
+        () => finish({ ok: false, error: "ACK_TIMEOUT" }),
+        INVITE_ACK_TIMEOUT_MS,
+      );
+
+      socket.on("disconnect", onDisconnect);
+      socket.emit(event, payload, (ack: InviteAck | undefined) => {
+        finish(ack ?? { ok: false, error: "INTERNAL_ERROR" });
+      });
     });
   }
 
@@ -233,6 +260,13 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
     if (event !== "game:invite:accept") {
       setIncomingInvites((current) => current.filter((invite) => invite.inviteId !== inviteId));
       setOutgoingInvite((current) => (current?.inviteId === inviteId ? null : current));
+    } else {
+      const gameId = ack.gameId;
+      if (typeof gameId === "number" && Number.isSafeInteger(gameId) && gameId > 0) {
+        completeInviteAcceptance(inviteId, gameId);
+      } else {
+        setNotice("La aceptación se confirmó, pero falta el identificador de la sala. Espera la notificación o inténtalo de nuevo.");
+      }
     }
     setBusyInviteId(null);
   }
