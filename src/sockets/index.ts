@@ -31,6 +31,20 @@ import {
 export let io: AppServer | undefined;
 let invitationExpiryTimer: NodeJS.Timeout | undefined;
 
+async function runPostCommitEffect(
+  operation: string,
+  effect: () => void | Promise<void>,
+): Promise<void> {
+  try {
+    await effect();
+  } catch (error) {
+    console.error("Invitation acceptance post-commit effect failed", {
+      operation,
+      errorType: error instanceof Error ? error.name : typeof error,
+    });
+  }
+}
+
 function emitPresenceChanged(payload: PresenceUserPayload | (Omit<PresenceUserPayload, "status"> & { status: "OFFLINE" })) {
   io?.emit("presence:changed", payload);
 }
@@ -279,6 +293,9 @@ export function initSockets(server: HttpServer): AppServer {
     socket.on("game:invite:accept", (payload, acknowledge) => {
       void (async () => {
         const ack = typeof acknowledge === "function" ? acknowledge : () => {};
+        let acceptedResult: Awaited<ReturnType<typeof acceptGameInvitation>> & {
+          ok: true;
+        };
         try {
           if (!payload || !validInviteId(payload.inviteId)) {
             ack({ ok: false, error: "VALIDATION_ERROR" });
@@ -303,48 +320,97 @@ export function initSockets(server: HttpServer): AppServer {
             return;
           }
 
-          const {
-            inviteId,
-            gameId,
-            senderId,
-            receiverId,
-            createdAt,
-            cancelledInvitations,
-          } = result;
-          await io?.in(`user:${senderId}`).socketsJoin(`game:${gameId}`);
-          await io?.in(`user:${receiverId}`).socketsJoin(`game:${gameId}`);
-          const acceptedPayload = { inviteId, gameId, status: "WAITING" as const };
-          io?.to(`user:${senderId}`).emit("game:invite:accepted", acceptedPayload);
-          io?.to(`user:${receiverId}`).emit("game:invite:accepted", acceptedPayload);
-          const createdPayload = {
-            id: gameId,
-            mode: "MULTIPLAYER" as const,
-            status: "WAITING" as const,
-            code: null,
-            createdAt: createdAt.toISOString(),
-          };
-          io?.to(`user:${senderId}`).emit("game:created", createdPayload);
-          io?.to(`user:${receiverId}`).emit("game:joined", {
-            id: gameId,
-            status: "WAITING" as const,
-            turnVersion: 0,
+          acceptedResult = result;
+        } catch (error) {
+          console.error("Error accepting game invitation:", error);
+          ack({ ok: false, error: "INTERNAL_ERROR" });
+          return;
+        }
+
+        const {
+          inviteId,
+          gameId,
+          senderId,
+          receiverId,
+          createdAt,
+          cancelledInvitations,
+        } = acceptedResult;
+        const acceptedPayload = { inviteId, gameId, status: "WAITING" as const };
+
+        try {
+          await runPostCommitEffect("join sender sockets to game room", async () => {
+            if (!io) throw new Error("Socket.IO unavailable");
+            await io.in(`user:${senderId}`).socketsJoin(`game:${gameId}`);
           });
-          io?.to(`game:${gameId}`).emit("game:updated", {
-            id: gameId,
-            status: "WAITING" as const,
-            turnVersion: 0,
+          await runPostCommitEffect("join receiver sockets to game room", async () => {
+            if (!io) throw new Error("Socket.IO unavailable");
+            await io.in(`user:${receiverId}`).socketsJoin(`game:${gameId}`);
+          });
+          await runPostCommitEffect("notify sender of accepted invitation", () => {
+            if (!io) throw new Error("Socket.IO unavailable");
+            io.to(`user:${senderId}`).emit("game:invite:accepted", acceptedPayload);
+          });
+          await runPostCommitEffect("notify receiver of accepted invitation", () => {
+            if (!io) throw new Error("Socket.IO unavailable");
+            io.to(`user:${receiverId}`).emit("game:invite:accepted", acceptedPayload);
+          });
+          await runPostCommitEffect("notify sender of created game", () => {
+            if (!io) throw new Error("Socket.IO unavailable");
+            io.to(`user:${senderId}`).emit("game:created", {
+              id: gameId,
+              mode: "MULTIPLAYER",
+              status: "WAITING",
+              code: null,
+              createdAt: createdAt.toISOString(),
+            });
+          });
+          await runPostCommitEffect("notify receiver of joined game", () => {
+            if (!io) throw new Error("Socket.IO unavailable");
+            io.to(`user:${receiverId}`).emit("game:joined", {
+              id: gameId,
+              status: "WAITING",
+              turnVersion: 0,
+            });
+          });
+          await runPostCommitEffect("notify game room of update", () => {
+            if (!io) throw new Error("Socket.IO unavailable");
+            io.to(`game:${gameId}`).emit("game:updated", {
+              id: gameId,
+              status: "WAITING",
+              turnVersion: 0,
+            });
           });
 
           for (const invitation of cancelledInvitations) {
             const cancelledPayload = { inviteId: invitation.inviteId };
-            io?.to(`user:${invitation.senderId}`).emit("game:invite:cancelled", cancelledPayload);
-            io?.to(`user:${invitation.receiverId}`).emit("game:invite:cancelled", cancelledPayload);
+            await runPostCommitEffect("notify related invitation cancellation to sender", () => {
+              if (!io) throw new Error("Socket.IO unavailable");
+              io.to(`user:${invitation.senderId}`).emit(
+                "game:invite:cancelled",
+                cancelledPayload,
+              );
+            });
+            await runPostCommitEffect("notify related invitation cancellation to receiver", () => {
+              if (!io) throw new Error("Socket.IO unavailable");
+              io.to(`user:${invitation.receiverId}`).emit(
+                "game:invite:cancelled",
+                cancelledPayload,
+              );
+            });
           }
-          await refreshPresenceForOnlineUsers();
-          ack({ ok: true, inviteId, gameId, status: "WAITING" });
+          await runPostCommitEffect("refresh online user presence", () =>
+            refreshPresenceForOnlineUsers(),
+          );
         } catch (error) {
-          console.error("Error accepting game invitation:", error);
-          ack({ ok: false, error: "INTERNAL_ERROR" });
+          console.error("Invitation acceptance post-commit processing failed", {
+            errorType: error instanceof Error ? error.name : typeof error,
+          });
+        }
+
+        try {
+          ack({ ok: true, inviteId, gameId, status: "WAITING" });
+        } catch {
+          console.error("Invitation acceptance acknowledgement could not be sent");
         }
       })();
     });

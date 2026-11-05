@@ -86,6 +86,17 @@ describe("invitaciones de partidas - base de pruebas", () => {
     if (!accepted.ok) return;
     gameIds.push(accepted.gameId);
 
+    const retriedAcceptance = await acceptGameInvitation(
+      receiverId,
+      created.inviteId,
+    );
+    expect(retriedAcceptance).toEqual(accepted);
+
+    expect(await acceptGameInvitation(senderId, created.inviteId)).toEqual({
+      ok: false,
+      error: "NOT_INVITE_RECIPIENT",
+    });
+
     const game = await prisma.game.findUnique({
       where: { id: accepted.gameId },
       include: { players: true },
@@ -101,6 +112,25 @@ describe("invitaciones de partidas - base de pruebas", () => {
     });
     expect(invitation?.status).toBe("ACCEPTED");
     expect(invitation?.gameId).toBe(accepted.gameId);
+  });
+
+  it("no recupera una aceptación si la partida vinculada ya no existe", async () => {
+    const created = await createGameInvitation(senderId, receiverId);
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const accepted = await acceptGameInvitation(receiverId, created.inviteId);
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) return;
+    gameIds.push(accepted.gameId);
+
+    await prisma.game.delete({ where: { id: accepted.gameId } });
+    gameIds.splice(gameIds.indexOf(accepted.gameId), 1);
+
+    expect(await acceptGameInvitation(receiverId, created.inviteId)).toEqual({
+      ok: false,
+      error: "INVITE_NOT_PENDING",
+    });
   });
 
   it("rechaza auto-invitaciones y mantiene una sola invitación saliente", async () => {
@@ -143,6 +173,8 @@ describe("invitaciones de partidas - base de pruebas", () => {
         "REJECTED",
       ),
     ).toEqual({ ok: true, otherUserId: senderId });
+    expect(await acceptGameInvitation(receiverId, rejectedInvitation.inviteId))
+      .toEqual({ ok: false, error: "INVITE_NOT_PENDING" });
 
     const cancelledInvitation = await createGameInvitation(senderId, receiverId);
     expect(cancelledInvitation.ok).toBe(true);
@@ -154,6 +186,8 @@ describe("invitaciones de partidas - base de pruebas", () => {
         "CANCELLED",
       ),
     ).toEqual({ ok: true, otherUserId: receiverId });
+    expect(await acceptGameInvitation(receiverId, cancelledInvitation.inviteId))
+      .toEqual({ ok: false, error: "INVITE_NOT_PENDING" });
   });
 
   it("expira las invitaciones caducadas y no permite aceptarlas", async () => {
@@ -175,6 +209,35 @@ describe("invitaciones de partidas - base de pruebas", () => {
       ok: false,
       error: "INVITE_NOT_PENDING",
     });
+  });
+
+  it("serializa aceptaciones concurrentes y conserva una sola partida", async () => {
+    const created = await createGameInvitation(senderId, receiverId);
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const results = await Promise.all([
+      acceptGameInvitation(receiverId, created.inviteId),
+      acceptGameInvitation(receiverId, created.inviteId),
+    ]);
+    const successful = results.filter((result) => result.ok);
+    expect(successful.length).toBeGreaterThan(0);
+    if (successful.length === 0) return;
+
+    const gameIdsForInvitation = new Set(successful.map((result) => result.gameId));
+    expect(gameIdsForInvitation.size).toBe(1);
+    const acceptedGameId = successful[0].gameId;
+    gameIds.push(acceptedGameId);
+
+    const linkedGames = await prisma.game.findMany({
+      where: { invitations: { some: { id: created.inviteId } } },
+      select: { id: true },
+    });
+    expect(linkedGames).toEqual([{ id: acceptedGameId }]);
+
+    const retry = await acceptGameInvitation(receiverId, created.inviteId);
+    expect(retry.ok).toBe(true);
+    if (retry.ok) expect(retry.gameId).toBe(acceptedGameId);
   });
 
   it("cancela las invitaciones del emisor al quedar desconectado", async () => {

@@ -186,13 +186,43 @@ export async function acceptGameInvitation(
       async (tx) => {
         const invitation = await tx.gameInvitation.findUnique({
           where: { id: inviteId },
-          select: { id: true, senderId: true, receiverId: true, status: true, expiresAt: true },
+          select: {
+            id: true,
+            senderId: true,
+            receiverId: true,
+            status: true,
+            expiresAt: true,
+            gameId: true,
+          },
         });
         if (!invitation) return { ok: false, error: "INVITE_NOT_FOUND" } as const;
         if (invitation.receiverId !== receiverId) {
           return { ok: false, error: "NOT_INVITE_RECIPIENT" } as const;
         }
         await lockUsers(tx, [invitation.senderId, invitation.receiverId]);
+
+        if (invitation.status === "ACCEPTED") {
+          if (invitation.gameId === null) {
+            return { ok: false, error: "INVITE_NOT_PENDING" } as const;
+          }
+          const game = await tx.game.findUnique({
+            where: { id: invitation.gameId },
+            select: { createdAt: true },
+          });
+          if (!game) {
+            return { ok: false, error: "INVITE_NOT_PENDING" } as const;
+          }
+          return {
+            ok: true,
+            inviteId: invitation.id,
+            gameId: invitation.gameId,
+            status: "WAITING",
+            senderId: invitation.senderId,
+            receiverId: invitation.receiverId,
+            createdAt: game.createdAt,
+            cancelledInvitations: [],
+          } as const;
+        }
 
         if (invitation.status !== "PENDING") {
           return { ok: false, error: "INVITE_NOT_PENDING" } as const;

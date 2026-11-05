@@ -126,6 +126,38 @@ function tokenDe(userId: number, expiresIn: string | number = "1h") {
   return jwt.sign({}, process.env.JWT_SECRET!, opts);
 }
 
+function acceptedInvitationResult(
+  inviteId: string,
+  senderId: number,
+  receiverId: number,
+  cancelledInvitations: Array<{
+    inviteId: string;
+    senderId: number;
+    receiverId: number;
+  }> = [],
+) {
+  return {
+    ok: true as const,
+    inviteId,
+    gameId: 99,
+    status: "WAITING" as const,
+    senderId,
+    receiverId,
+    createdAt: new Date("2026-01-02T03:04:05.000Z"),
+    cancelledInvitations,
+  };
+}
+
+async function connectedClient(userId: number): Promise<AppClientSocket> {
+  const socket = registerClient(
+    Client(`http://localhost:${port}`, {
+      auth: { token: tokenDe(userId) },
+    }) as AppClientSocket,
+  );
+  await new Promise<void>((resolve) => socket.once("connect", resolve));
+  return socket;
+}
+
 describe("Socket.IO integración", () => {
   it("rechaza conexión sin token", async () => {
     const socket = registerClient(
@@ -377,6 +409,223 @@ describe("Socket.IO integración", () => {
       { id: 99, status: "WAITING", turnVersion: 0 },
       { ok: true, inviteId, gameId: 99, status: "WAITING" },
     ]);
+  });
+
+  it("responde éxito si falla la unión de sockets después del commit", async () => {
+    const [sender, receiver] = await Promise.all([
+      connectedClient(91),
+      connectedClient(92),
+    ]);
+    const inviteId = "8f98f5a2-f48b-4c80-aeda-726abc150111";
+    vi.mocked(acceptGameInvitation).mockResolvedValue(
+      acceptedInvitationResult(inviteId, 91, 92) as never,
+    );
+
+    const roomJoinSpy = vi.spyOn(ioServer, "in").mockImplementation(() => {
+      throw new Error("socket join failure");
+    });
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const senderAccepted = new Promise((resolve) =>
+        sender.once("game:invite:accepted", resolve),
+      );
+      const receiverAccepted = new Promise((resolve) =>
+        receiver.once("game:invite:accepted", resolve),
+      );
+      const acknowledgement = new Promise((resolve) => {
+        receiver.emit(
+          "game:invite:accept",
+          { inviteId },
+          (result) => resolve(result),
+        );
+      });
+
+      expect(await Promise.all([
+        senderAccepted,
+        receiverAccepted,
+        acknowledgement,
+      ])).toEqual([
+        { inviteId, gameId: 99, status: "WAITING" },
+        { inviteId, gameId: 99, status: "WAITING" },
+        { ok: true, inviteId, gameId: 99, status: "WAITING" },
+      ]);
+      expect(roomJoinSpy).toHaveBeenCalledTimes(2);
+      expect(errorLog).toHaveBeenCalledTimes(2);
+      expect(errorLog).toHaveBeenCalledWith(
+        "Invitation acceptance post-commit effect failed",
+        expect.objectContaining({
+          operation: "join sender sockets to game room",
+          errorType: "Error",
+        }),
+      );
+    } finally {
+      roomJoinSpy.mockRestore();
+      errorLog.mockRestore();
+    }
+  });
+
+  it("permite recuperar el ack de una aceptación idempotente", async () => {
+    const [sender, receiver] = await Promise.all([
+      connectedClient(96),
+      connectedClient(97),
+    ]);
+    const inviteId = "8f98f5a2-f48b-4c80-aeda-726abc150111";
+    vi.mocked(acceptGameInvitation).mockResolvedValue(
+      acceptedInvitationResult(inviteId, 96, 97) as never,
+    );
+
+    const accept = () =>
+      new Promise((resolve) => {
+        receiver.emit(
+          "game:invite:accept",
+          { inviteId },
+          (result) => resolve(result),
+        );
+      });
+
+    const firstAck = await accept();
+    const retriedAck = await accept();
+
+    expect(firstAck).toEqual({
+      ok: true,
+      inviteId,
+      gameId: 99,
+      status: "WAITING",
+    });
+    expect(retriedAck).toEqual(firstAck);
+    expect(acceptGameInvitation).toHaveBeenCalledTimes(2);
+    expect(sender.connected).toBe(true);
+  });
+
+  it("responde éxito y conserva eventos si falla el refresco de presencia", async () => {
+    const [sender, receiver] = await Promise.all([
+      connectedClient(101),
+      connectedClient(102),
+    ]);
+    const inviteId = "8f98f5a2-f48b-4c80-aeda-726abc150111";
+    const cancelledInviteId = "a338e227-a97a-4f11-9682-aef688f2d772";
+    vi.mocked(acceptGameInvitation).mockResolvedValue(
+      acceptedInvitationResult(inviteId, 101, 102, [
+        { inviteId: cancelledInviteId, senderId: 101, receiverId: 103 },
+      ]) as never,
+    );
+    vi.mocked(prisma.gamePlayer.findMany).mockRejectedValueOnce(
+      new Error("database details must not be logged"),
+    );
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const cancellationNotice = new Promise((resolve) =>
+        sender.once("game:invite:cancelled", resolve),
+      );
+      const acknowledgement = new Promise((resolve) => {
+        receiver.emit(
+          "game:invite:accept",
+          { inviteId },
+          (result) => resolve(result),
+        );
+      });
+
+      expect(await Promise.all([cancellationNotice, acknowledgement])).toEqual([
+        { inviteId: cancelledInviteId },
+        { ok: true, inviteId, gameId: 99, status: "WAITING" },
+      ]);
+      expect(errorLog).toHaveBeenCalledWith(
+        "Invitation acceptance post-commit effect failed",
+        {
+          operation: "refresh online user presence",
+          errorType: "Error",
+        },
+      );
+      expect(errorLog.mock.calls.flat()).not.toContain(
+        "database details must not be logged",
+      );
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
+  it("mantiene INTERNAL_ERROR si falla la transacción antes de confirmar", async () => {
+    const receiver = await connectedClient(111);
+    const inviteId = "8f98f5a2-f48b-4c80-aeda-726abc150111";
+    vi.mocked(acceptGameInvitation).mockRejectedValueOnce(
+      new Error("transaction failed"),
+    );
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    const acceptedEvent = vi.fn();
+    receiver.on("game:invite:accepted", acceptedEvent);
+
+    try {
+      const acknowledgement = new Promise((resolve) => {
+        receiver.emit(
+          "game:invite:accept",
+          { inviteId },
+          (result) => resolve(result),
+        );
+      });
+
+      expect(await acknowledgement).toEqual({
+        ok: false,
+        error: "INTERNAL_ERROR",
+      });
+      expect(acceptedEvent).not.toHaveBeenCalled();
+      expect(errorLog).toHaveBeenCalledWith(
+        "Error accepting game invitation:",
+        expect.any(Error),
+      );
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
+  it("continúa la notificación a la otra persona si el receptor se desconecta tras el commit", async () => {
+    const [sender, receiver] = await Promise.all([
+      connectedClient(116),
+      connectedClient(117),
+    ]);
+    const inviteId = "8f98f5a2-f48b-4c80-aeda-726abc150111";
+    let finishAcceptance!: (result: never) => void;
+    let markAcceptanceStarted!: () => void;
+    const acceptanceStarted = new Promise<void>((resolve) => {
+      markAcceptanceStarted = resolve;
+    });
+    let markPresenceRefreshFinished!: () => void;
+    const presenceRefreshFinished = new Promise<void>((resolve) => {
+      markPresenceRefreshFinished = resolve;
+    });
+    vi.mocked(prisma.gamePlayer.findMany).mockImplementation(async () => {
+      markPresenceRefreshFinished();
+      return [] as never;
+    });
+    vi.mocked(acceptGameInvitation).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishAcceptance = resolve;
+          markAcceptanceStarted();
+        }),
+    );
+
+    const senderAccepted = new Promise((resolve) =>
+      sender.once("game:invite:accepted", resolve),
+    );
+    const acknowledgement = vi.fn();
+    receiver.emit(
+      "game:invite:accept",
+      { inviteId },
+      acknowledgement,
+    );
+    await acceptanceStarted;
+    receiver.disconnect();
+    finishAcceptance(acceptedInvitationResult(inviteId, 116, 117) as never);
+
+    expect(await senderAccepted).toEqual({
+      inviteId,
+      gameId: 99,
+      status: "WAITING",
+    });
+    await presenceRefreshFinished;
+    expect(acknowledgement).not.toHaveBeenCalled();
   });
 
   it("cancela las invitaciones al desconectarse el último socket del receptor", async () => {

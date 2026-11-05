@@ -3,6 +3,7 @@ import { createGame, createMultiplayerGame } from "../services/game.services.js"
 import { responderError } from "../errors/responderError.js";
 import { createGameSchema } from "../schemas/game.schema.js";
 import { io, refreshPresenceForOnlineUsers } from "../sockets/index.js";
+import { runPostCommitEffect } from "./post-commit-effects.js";
 
 function notifyGameCreated(
   userId: number,
@@ -14,7 +15,8 @@ function notifyGameCreated(
     createdAt: Date;
   },
 ) {
-  io?.to(`user:${userId}`).emit("game:created", {
+  if (!io) throw new Error("Socket.IO unavailable");
+  io.to(`user:${userId}`).emit("game:created", {
     id: game.id,
     mode: game.mode,
     status: game.status,
@@ -62,8 +64,12 @@ export async function createGameController(req: Request, res: Response) {
       }
       throw error;
     }
-    await refreshPresenceForOnlineUsers();
-    notifyGameCreated(userId, game);
+    await runPostCommitEffect("refresh presence after multiplayer game creation", () =>
+      refreshPresenceForOnlineUsers(),
+    );
+    await runPostCommitEffect("notify multiplayer game creation", () =>
+      notifyGameCreated(userId, game),
+    );
     return res.status(201).json({
       id: game.id,
       status: game.status,
@@ -76,7 +82,9 @@ export async function createGameController(req: Request, res: Response) {
   if (!game) {
     return responderError(res, "NOT_ENOUGH_QUESTIONS"); // Menos de 5 preguntas en catálogo.
   }
-  notifyGameCreated(userId, game);
+  await runPostCommitEffect("notify individual game creation", () =>
+    notifyGameCreated(userId, game),
+  );
   return res.status(201).json({
     id: game.id,
     status: game.status,
