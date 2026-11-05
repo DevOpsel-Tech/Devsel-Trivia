@@ -36,7 +36,13 @@ app.set("trust proxy", 1);
 app.use(
   cors({
     origin(origin, callback) {
-      callback(null, isAllowedFrontendOrigin(origin) ? origin : false);
+      const normalizedOrigin = origin?.trim();
+      callback(
+        null,
+        normalizedOrigin && isAllowedFrontendOrigin(normalizedOrigin)
+          ? normalizedOrigin
+          : false,
+      );
     },
     credentials: true,
   }),
@@ -534,7 +540,7 @@ app.use("/api/categories", categoryRouter);
  * /api/auth/login:
  *   post:
  *     summary: Iniciar sesión
- *     description: Comprueba el email y la contraseña y devuelve un token JWT. Acepta un máximo de 5 intentos por IP cada 15 minutos; el exceso devuelve 429.
+ *     description: Comprueba el email y la contraseña y devuelve un token JWT. Fuera del modo desarrollo acepta 5 intentos por IP cada 15 minutos; el exceso devuelve 429.
  *     requestBody:
  *       required: true
  *       content:

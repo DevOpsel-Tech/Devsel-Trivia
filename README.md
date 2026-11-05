@@ -67,7 +67,7 @@ El endpoint `/health` ya está disponible. El puerto por defecto es 3000; al cam
 | `npm ci` | Instala las versiones exactas del lockfile en un clon limpio |
 | `npm install paquete` | Añade una dependencia cuando toca; actualiza ambos archivos de paquetes |
 | `npm install -D paquete` | Añade una herramienta usada para desarrollar |
-| `npm run dev` | Ejecuta TypeScript con tsx, carga `.env` si existe y reinicia al guardar |
+| `npm run dev` | Ejecuta TypeScript con tsx, carga `.env` si existe, desactiva el límite de intentos de login y reinicia al guardar |
 | `npm run typecheck` | Comprueba tipos sin generar archivos |
 | `npm run build` | Comprueba y compila `src/` a `dist/` |
 | `npm start` | Ejecuta `dist/server.js`; necesita una compilación previa |
@@ -80,6 +80,8 @@ El endpoint `/health` ya está disponible. El puerto por defecto es 3000; al cam
 | `npm run test:integration` | Ejecuta las pruebas de integración con Supertest contra la base de datos de pruebas; requiere tenerla configurada (ver `tests/README.md`) |
 
 `tsx` ejecuta el código, pero no sustituye la comprobación de tipos. No hay script `lint` todavía. Ya existen pruebas automatizadas: `npm test` (Vitest con mocks, sin base de datos) y `npm run test:integration` (contra una base de datos PostgreSQL real de pruebas). El detalle está en `tests/README.md`. Antes de entregar, ejecuta siempre `typecheck`, `build` y las pruebas.
+
+El límite de 5 intentos de inicio de sesión por IP cada 15 minutos se mantiene fuera del modo desarrollo. `npm run dev` activa ese modo; `npm start` lo aplica siempre que `NODE_ENV` no esté configurado como `development`.
 
 ### PostgreSQL y Prisma (Reto 06)
 

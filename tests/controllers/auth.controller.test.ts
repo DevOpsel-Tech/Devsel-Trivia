@@ -30,6 +30,7 @@ describe("POST /api/auth/login", () => {
   beforeEach(() => {
     // Usamos un secreto exclusivo para estas pruebas.
     process.env.JWT_SECRET = "secreto-solo-para-tests";
+    process.env.NODE_ENV = "production";
     resetLoginRateLimitForTests();
     vi.clearAllMocks();
   });
@@ -121,6 +122,21 @@ describe("POST /api/auth/login", () => {
       },
     });
     expect(loginUser).toHaveBeenCalledTimes(5);
+  });
+
+  it("no limita los intentos cuando el servidor está en desarrollo", async () => {
+    process.env.NODE_ENV = "development";
+    vi.mocked(loginUser).mockResolvedValue(null);
+
+    for (let intento = 0; intento < 6; intento++) {
+      const respuesta = await request(app)
+        .post("/api/auth/login")
+        .send({ email: "ana@email.com", password: "incorrecta123" });
+
+      expect(respuesta.status).toBe(401);
+    }
+
+    expect(loginUser).toHaveBeenCalledTimes(6);
   });
 });
 
