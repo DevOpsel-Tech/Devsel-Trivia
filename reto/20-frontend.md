@@ -10,7 +10,7 @@
 
 1. Con el tutor, crea o identifica TriviaApp_front con React y Vite. Su código y sus dependencias viven allí; registra su URL en este README.
 
-2. Crea registro, login, listado de partidas, creación y entrada por código, sala, turno y resultado. Envía JWT por Authorization y al conectar sockets; para esta primera versión mantenlo en memoria y vuelve a iniciar sesión al recargar.
+2. Crea registro, login, listado de partidas, creación y entrada por código, sala, turno y resultado. Envía JWT por Authorization y al conectar sockets. La sesión actual se conserva en `sessionStorage`; las rutas con hash restauran el listado o la sala al recargar y con atrás/adelante. Al cerrar sesión, cerrar la pestaña o recibir un JWT inválido se elimina.
 
 3. Integra avisos y recuperación. Bloquea envíos pendientes y muestra errores sin perder datos. En backend actualiza solo contratos o CORS cuando sea necesario.
 

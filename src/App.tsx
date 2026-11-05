@@ -1,15 +1,82 @@
 /* Componente raíz: gestiona las pantallas (home, registro, login) y el token en memoria. */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { LoginForm } from "./components/LoginForm";
 import { RegisterForm } from "./components/RegisterForm";
 import { GameLobby } from "./components/GameLobby";
 import { GameRoom } from "./components/GameRoom";
+import ElectricBorder from "./components/ElectricBorder";
+import LaserFlow from "./components/LaserFlow";
 import FlyingButton from "./components/FlyingButton";
 import LetterGlitch from "./components/LetterGlitch";
 import SplitFlapText from "./components/SplitFlapText";
 
 type Screen = "welcome" | "home" | "register" | "login" | "lobby" | "room";
+
+type AppRoute = { screen: Screen; gameId: number | null };
+
+function readRoute(): AppRoute {
+  const gameMatch = window.location.hash.match(/^#\/games\/(\d+)$/);
+  if (gameMatch) return { screen: "room", gameId: Number(gameMatch[1]) };
+  if (window.location.hash === "#/games")
+    return { screen: "lobby", gameId: null };
+  if (window.location.hash === "#/login")
+    return { screen: "login", gameId: null };
+  if (window.location.hash === "#/register")
+    return { screen: "register", gameId: null };
+  if (window.location.hash === "#/home")
+    return { screen: "home", gameId: null };
+  return { screen: "welcome", gameId: null };
+}
+
+function hashForRoute(screen: Screen, gameId: number | null) {
+  if (screen === "lobby") return "#/games";
+  if (screen === "room" && gameId) return `#/games/${gameId}`;
+  if (screen === "login") return "#/login";
+  if (screen === "register") return "#/register";
+  if (screen === "home") return "#/home";
+  return "#/";
+}
+
+// sessionStorage conserva la sesión al recargar esta pestaña, pero se borra al
+// cerrarla. No guardamos historial, puntuación ni el estado de una pregunta.
+const SESSION_STORAGE_KEY = "trivia.session";
+
+type StoredSession = {
+  token: string;
+  userId: number;
+  displayName: string;
+};
+
+function readStoredSession(): StoredSession | null {
+  try {
+    const value = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (!value) return null;
+
+    const session: unknown = JSON.parse(value);
+    if (
+      typeof session === "object" &&
+      session !== null &&
+      "token" in session &&
+      typeof session.token === "string" &&
+      "userId" in session &&
+      typeof session.userId === "number" &&
+      "displayName" in session &&
+      typeof session.displayName === "string"
+    ) {
+      return session as StoredSession;
+    }
+  } catch {
+    // Un valor corrupto no debe impedir abrir la aplicación.
+  }
+
+  window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  return null;
+}
+
+function saveStoredSession(session: StoredSession) {
+  window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+}
 
 function AppBackground() {
   return (
@@ -34,35 +101,121 @@ function AppBackground() {
     </div>
   );
 }
+function useReducedMotion() {
+  const [reducedMotion, setReducedMotion] = useState(() =>
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(mediaQuery.matches);
+
+    mediaQuery.addEventListener("change", update);
+    return () => mediaQuery.removeEventListener("change", update);
+  }, []);
+
+  return reducedMotion;
+}
 
 function App() {
+  const prefersReducedMotion = useReducedMotion();
+  const [restoredSession] = useState(() => readStoredSession());
+  const [initialRoute] = useState(() => readRoute());
   // Estado temporal para navegar sin instalar un router.
-  const [screen, setScreen] = useState<Screen>("welcome");
+  const [screen, setScreen] = useState<Screen>(
+    restoredSession && ["lobby", "room"].includes(initialRoute.screen)
+      ? initialRoute.screen
+      : restoredSession
+        ? "lobby"
+        : initialRoute.screen,
+  );
   const [loginNotice, setLoginNotice] = useState("");
 
-  // El JWT vive en React y se pierde al recargar la página.
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [sessionUserId, setSessionUserId] = useState<number | null>(null);
-  const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
+  // Se restaura solo para esta pestaña; la API vuelve a validar el JWT al cargar el lobby.
+  const [sessionToken, setSessionToken] = useState<string | null>(
+    restoredSession?.token ?? null,
+  );
+  const [sessionUserId, setSessionUserId] = useState<number | null>(
+    restoredSession?.userId ?? null,
+  );
+  const [selectedGameId, setSelectedGameId] = useState<number | null>(
+    restoredSession && initialRoute.screen === "room"
+      ? initialRoute.gameId
+      : null,
+  );
   // Nombre público del usuario autenticado, devuelto por POST /api/auth/login.
   const [sessionDisplayName, setSessionDisplayName] = useState<string | null>(
-    null,
+    restoredSession?.displayName ?? null,
   );
   const [isEntering, setIsEntering] = useState(false);
+  const navigate = useCallback(
+    (nextScreen: Screen, gameId: number | null = null, replace = false) => {
+      const hash = hashForRoute(nextScreen, gameId);
+      if (window.location.hash !== hash) {
+        window.history[replace ? "replaceState" : "pushState"](null, "", hash);
+      }
+      setScreen(nextScreen);
+      setSelectedGameId(nextScreen === "room" ? gameId : null);
+    },
+    [],
+  );
+  const clearSession = useCallback(
+    (nextScreen: Screen = "home") => {
+      window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      setSessionToken(null);
+      setSessionUserId(null);
+      setSessionDisplayName(null);
+      navigate(nextScreen, null, true);
+    },
+    [navigate],
+  );
   const handleAuthenticationError = useCallback(() => {
-    setSessionToken(null);
-    setSessionUserId(null);
-    setSelectedGameId(null);
-    setSessionDisplayName(null);
+    clearSession("login");
     setLoginNotice("Tu sesión ha caducado. Inicia sesión de nuevo.");
-    setScreen("login");
-  }, []);
+  }, [clearSession]);
+  const handleDisplayNameUpdated = useCallback(
+    (displayName: string) => {
+      setSessionDisplayName(displayName);
+      if (sessionToken && sessionUserId !== null) {
+        saveStoredSession({
+          token: sessionToken,
+          userId: sessionUserId,
+          displayName,
+        });
+      }
+    },
+    [sessionToken, sessionUserId],
+  );
   const handleEnter = () => {
     if (isEntering) return;
 
     setIsEntering(true);
-    window.setTimeout(() => setScreen("home"), 3200);
+    window.setTimeout(() => {
+      // Al volver a la portada, el botón debe poder iniciar otra entrada.
+      setIsEntering(false);
+      navigate("home");
+    }, 3200);
   };
+  useEffect(() => {
+    const restoreRoute = () => {
+      const route = readRoute();
+      if (
+        (route.screen === "lobby" || route.screen === "room") &&
+        !sessionToken
+      ) {
+        navigate("login", null, true);
+        return;
+      }
+      setScreen(route.screen);
+      setSelectedGameId(route.screen === "room" ? route.gameId : null);
+    };
+    window.addEventListener("popstate", restoreRoute);
+    window.addEventListener("hashchange", restoreRoute);
+    return () => {
+      window.removeEventListener("popstate", restoreRoute);
+      window.removeEventListener("hashchange", restoreRoute);
+    };
+  }, [navigate, sessionToken]);
   // Con sesión iniciada, mostramos las partidas del usuario.
 
   if (screen === "welcome") {
@@ -136,10 +289,11 @@ function App() {
         <AppBackground />
         <div className="relative z-10 mx-auto max-w-4xl">
           <GameRoom
+            key={selectedGameId}
             gameId={selectedGameId}
             token={sessionToken}
             userId={sessionUserId}
-            onBack={() => setScreen("lobby")}
+            onBack={() => navigate("lobby")}
             onAuthenticationError={handleAuthenticationError}
           />
         </div>
@@ -156,17 +310,9 @@ function App() {
             token={sessionToken}
             userId={sessionUserId!}
             displayName={sessionDisplayName ?? ""}
-            onDisplayNameUpdated={setSessionDisplayName}
-            onLogout={() => {
-              setSessionToken(null);
-              setScreen("home");
-              setSessionUserId(null);
-              setSessionDisplayName(null);
-            }}
-            onOpenGame={(gameId) => {
-              setSelectedGameId(gameId);
-              setScreen("room");
-            }}
+            onDisplayNameUpdated={handleDisplayNameUpdated}
+            onLogout={() => clearSession()}
+            onOpenGame={(gameId) => navigate("room", gameId)}
             onAuthenticationError={handleAuthenticationError}
           />
         </div>
@@ -180,47 +326,63 @@ function App() {
     return (
       <main className="relative isolate min-h-screen overflow-hidden bg-[#090909]/90 px-4 py-6 text-[#F8FAFC] sm:py-10">
         <AppBackground />
-        <section className="ambient-card relative z-10 mx-auto max-w-md rounded-3xl border border-[#2B2B2B] bg-[#141414] p-6 shadow-2xl shadow-black/30 sm:p-8">
-          <button
-            type="button"
-            onClick={() => setScreen("home")}
-            className="text-sm font-semibold text-[#A3A3A3] hover:text-[#A3E635]"
-          >
-            ← Volver
-          </button>
+        <ElectricBorder
+          color="#A3E635"
+          glowColor="#BEF264"
+          borderRadius={24}
+          active={!prefersReducedMotion}
+          className="mx-auto max-w-md"
+          style={undefined}
+        >
+          <section className="ambient-card relative z-10 rounded-3xl border border-[#2B2B2B] bg-[#141414] p-6 shadow-2xl shadow-black/30 sm:p-8">
+            <button
+              type="button"
+              onClick={() => navigate("home")}
+              className="text-sm font-semibold text-[#A3A3A3] hover:text-[#A3E635]"
+            >
+              ← Volver
+            </button>
 
-          <p className="mt-8 text-sm font-bold text-[#A3E635]">
-            {isRegister ? "NUEVA CUENTA" : "BIENVENIDO DE NUEVO"}
-          </p>
+            <p className="mt-8 text-sm font-bold text-[#A3E635]">
+              {isRegister ? "NUEVA CUENTA" : "BIENVENIDO DE NUEVO"}
+            </p>
 
-          <h1 className="mt-3 text-3xl font-black">
-            {isRegister ? "Crea tu cuenta" : "Inicia sesión"}
-          </h1>
+            <h1 className="mt-3 text-3xl font-black">
+              {isRegister ? "Crea tu cuenta" : "Inicia sesión"}
+            </h1>
 
-          {isRegister ? (
-            <RegisterForm
-              onRegistered={() => {
-                setLoginNotice("Cuenta creada. Inicia sesión para continuar.");
-                setScreen("login");
-              }}
-            />
-          ) : (
-            <LoginForm
-              notice={loginNotice}
-              onLoggedIn={(response) => {
-                // Guardamos el token para usarlo en las peticiones autenticadas.
-                setSessionToken(response.token);
-                setSessionUserId(response.user.id);
-                setSessionDisplayName(response.user.displayName);
-                // Quitamos el aviso de registro después del login.
-                setLoginNotice("");
+            {isRegister ? (
+              <RegisterForm
+                onRegistered={() => {
+                  setLoginNotice(
+                    "Cuenta creada. Inicia sesión para continuar.",
+                  );
+                  navigate("login");
+                }}
+              />
+            ) : (
+              <LoginForm
+                notice={loginNotice}
+                onLoggedIn={(response) => {
+                  // Guardamos la sesión de la pestaña y la recuperamos tras F5.
+                  saveStoredSession({
+                    token: response.token,
+                    userId: response.user.id,
+                    displayName: response.user.displayName,
+                  });
+                  setSessionToken(response.token);
+                  setSessionUserId(response.user.id);
+                  setSessionDisplayName(response.user.displayName);
+                  // Quitamos el aviso de registro después del login.
+                  setLoginNotice("");
 
-                // Volvemos a la portada.
-                setScreen("lobby");
-              }}
-            />
-          )}
-        </section>
+                  // Volvemos a la portada.
+                  navigate("lobby");
+                }}
+              />
+            )}
+          </section>
+        </ElectricBorder>
       </main>
     );
   }
@@ -229,17 +391,34 @@ function App() {
       <AppBackground />
       <div className="relative z-10 mx-auto max-w-4xl">
         <header className="mb-10 flex items-center justify-between">
-          <p className="text-xl font-black tracking-tight">
-            trivia<span className="text-[#A3E635]">.</span>
-          </p>
+          <button
+            type="button"
+            onClick={() => navigate("welcome")}
+            className="text-xl font-black tracking-tight transition hover:text-[#A3E635]"
+            aria-label="Volver a la portada"
+          >
+            ← trivia<span className="text-[#A3E635]">.</span>
+          </button>
 
           <span className="rounded-full border border-[#2B2B2B] bg-[#141414] px-3 py-1 text-xs font-semibold text-[#A3A3A3]">
             MULTIJUGADOR
           </span>
         </header>
 
-        <section className="ambient-card rounded-3xl border border-[#2B2B2B] bg-[#141414] shadow-2xl shadow-black/30">
-          <div className="grid lg:grid-cols-[1.2fr_0.8fr]">
+        <section className="ambient-card relative overflow-hidden rounded-3xl border border-[#2B2B2B] bg-[#141414] shadow-2xl shadow-black/30">
+          <LaserFlow
+            className="z-0 opacity-80"
+            style={{ position: "absolute", inset: 0 }}
+            color="#A3E635"
+            intensity={1.2}
+            speed={1}
+            beamWidth={1.2}
+            paused={prefersReducedMotion}
+            surfaceRef={undefined}
+            revealImage={undefined}
+            dpr={undefined}
+          />
+          <div className="relative z-10 grid lg:grid-cols-[1.2fr_0.8fr]">
             <div className="p-8 sm:p-12">
               <div className="mb-8 flex items-center gap-2 text-sm font-bold text-[#A3E635]">
                 <span className="h-2 w-2 rounded-full bg-[#A3E635]" />
@@ -262,7 +441,7 @@ function App() {
 
                   <button
                     type="button"
-                    onClick={() => setSessionToken(null)}
+                    onClick={() => clearSession()}
                     className="rounded-xl border border-[#3D3D3D] bg-[#1A1A1A] px-5 py-3.5 font-bold text-[#F8FAFC] transition hover:border-[#A3E635] hover:bg-[#242424]"
                   >
                     Cerrar sesión
@@ -272,7 +451,7 @@ function App() {
                 <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                   <button
                     type="button"
-                    onClick={() => setScreen("register")}
+                    onClick={() => navigate("register")}
                     className="rounded-xl bg-gradient-to-b from-[#F8FAFC] via-[#D4D4D4] to-[#A3A3A3] px-5 py-3.5 font-bold text-[#090909] shadow-lg shadow-black/20 transition hover:from-white hover:to-[#D4D4D4]"
                   >
                     Crear cuenta
@@ -280,7 +459,7 @@ function App() {
 
                   <button
                     type="button"
-                    onClick={() => setScreen("login")}
+                    onClick={() => navigate("login")}
                     className="rounded-xl border border-[#3D3D3D] bg-[#1A1A1A] px-5 py-3.5 font-bold text-[#F8FAFC] transition hover:border-[#A3E635] hover:bg-[#242424]"
                   >
                     Iniciar sesión

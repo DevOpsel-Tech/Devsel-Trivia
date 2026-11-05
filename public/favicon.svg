@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Trivia</title>
+  <rect width="64" height="64" rx="16" fill="#090909"/>
+  <path d="M23 24c0-6.1 4-10 10.4-10 6.2 0 10.6 3.8 10.6 9.6 0 4.7-2.4 7-6.3 9.5-3.1 2-4.2 3.5-4.2 6.9v1.2h-7v-2.1c0-4.8 1.8-7.5 5.6-9.8 3.1-1.9 4.4-3.3 4.4-5.5 0-2.1-1.5-3.6-3.7-3.6-2.4 0-3.8 1.6-3.8 4.5H23Z" fill="#A3E635"/>
+  <circle cx="30" cy="48" r="4" fill="#BEF264"/>
+  <circle cx="49" cy="15" r="3" fill="#F8FAFC"/>
+</svg>
