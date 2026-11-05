@@ -395,7 +395,7 @@ function App() {
                   setLoginNotice("");
 
                   // Volvemos a la portada.
-                  navigate("lobby");
+                  navigate("lobby", null, true);
                 }}
               />
             )}

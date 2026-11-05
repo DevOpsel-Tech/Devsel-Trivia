@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { env } from "../config/env";
+import ElectricBorder from "./ElectricBorder";
 
 type AvailablePlayer = {
   userId: number;
@@ -34,6 +35,8 @@ type OnlinePlayersProps = {
   token: string;
   onOpenGame: (gameId: number) => void;
   onRefreshHistory: () => void;
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
 };
 
 const PRESENCE_LIMIT = 50;
@@ -71,7 +74,7 @@ function getRemainingTime(expiresAt: string, now: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export function OnlinePlayers({ token, onOpenGame, onRefreshHistory }: OnlinePlayersProps) {
+export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onOpenChange }: OnlinePlayersProps) {
   const socketRef = useRef<Socket | null>(null);
   const acceptedGamesRef = useRef(new Set<number>());
   const lastRequestWasFirstPageRef = useRef(true);
@@ -239,20 +242,27 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory }: OnlinePla
 
   return (
     <section className="mt-6 rounded-xl border border-[#2B2B2B] bg-[#0D0D0D] p-4" aria-busy={isLoading}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-xs font-bold tracking-[0.18em] text-[#A3E635]">JUGADORES ONLINE</p>
-          <p className="mt-1 text-sm text-[#A3A3A3]">Invita a alguien disponible a una sala privada.</p>
-        </div>
-        <button type="button" onClick={() => requestPresenceRef.current()} className="text-sm font-semibold text-[#A3E635] hover:text-[#BEF264]">
-          Actualizar
-        </button>
-      </div>
+      <details className="group" open={isOpen} onToggle={(event) => onOpenChange(event.currentTarget.open)}>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg text-left marker:content-none">
+          <div>
+            <p className="text-xs font-bold tracking-[0.18em] text-[#A3E635]">
+              JUGADORES DISPONIBLES <span className="ml-1 normal-case tracking-normal text-[#D4D4D4]">· {isLoading ? "buscando jugadores…" : `${players.length} ${players.length === 1 ? "disponible" : "disponibles"}`}</span>
+            </p>
+            <p className="mt-1 text-sm text-[#A3A3A3]">Invita a alguien disponible a una sala privada.</p>
+          </div>
+          <span className="text-xl text-[#A3E635] transition-transform group-open:rotate-180" aria-hidden="true">⌄</span>
+        </summary>
 
-      {presenceError && <p className="mt-3 text-sm text-amber-200" role="alert">{presenceError} <button type="button" onClick={() => requestPresenceRef.current()} className="underline">Reintentar</button></p>}
-      {notice && <p className="mt-3 text-sm text-[#D4D4D4]" role="status">{notice}</p>}
+        <div className="mt-4">
+          <div className="flex justify-end">
+            <button type="button" onClick={() => requestPresenceRef.current()} className="text-sm font-semibold text-[#A3E635] hover:text-[#BEF264]">
+              Actualizar
+            </button>
+          </div>
+          {presenceError && <p className="mt-3 text-sm text-amber-200" role="alert">{presenceError} <button type="button" onClick={() => requestPresenceRef.current()} className="underline">Reintentar</button></p>}
+          {notice && <p className="mt-3 text-sm text-[#D4D4D4]" role="status">{notice}</p>}
 
-      <ul className="mt-4 space-y-2" aria-label="Jugadores disponibles">
+          <ul className="mt-4 space-y-2" aria-label="Jugadores disponibles">
         {players.map((player) => (
           <li key={player.userId} className="flex items-center justify-between gap-3 rounded-lg border border-[#2B2B2B] bg-[#141414] px-3 py-2">
             <span className="min-w-0 truncate text-sm font-semibold"><span className="mr-2 inline-block h-2 w-2 rounded-full bg-[#A3E635]" />{player.displayName}</span>
@@ -266,8 +276,24 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory }: OnlinePla
       {nextCursor !== null && <button type="button" disabled={isLoading} onClick={() => requestPresenceRef.current(nextCursor)} className="mt-4 rounded-lg border border-[#3D3D3D] px-3 py-2 text-sm font-semibold text-[#D4D4D4] disabled:opacity-60">{isLoading ? "Cargando…" : "Ver más jugadores"}</button>}
 
       {outgoingInvite && !outgoingExpired && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#A3E635]/35 bg-[#A3E635]/10 p-3" role="status"><span className="text-sm">Invitación enviada a <strong>{outgoingInvite.receiverName}</strong> · caduca en {getRemainingTime(outgoingInvite.expiresAt, now)}</span><button type="button" disabled={busyInviteId === outgoingInvite.inviteId} onClick={() => void handleInviteAction("game:invite:cancel", outgoingInvite.inviteId)} className="text-sm font-semibold text-[#A3E635] underline disabled:opacity-60">Cancelar</button></div>}
+        </div>
+      </details>
 
-      {currentInvite && new Date(currentInvite.expiresAt).getTime() > now && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="invite-title"><div className="w-full max-w-sm rounded-2xl border border-[#A3E635]/50 bg-[#141414] p-6 shadow-2xl"><p className="text-xs font-bold tracking-[0.18em] text-[#A3E635]">INVITACIÓN PRIVADA</p><h3 id="invite-title" className="mt-3 text-xl font-black">{currentInvite.from.displayName} quiere jugar contigo</h3><p className="mt-2 text-sm text-[#A3A3A3]">La invitación caduca en {getRemainingTime(currentInvite.expiresAt, now)}.</p><div className="mt-6 flex gap-3"><button type="button" disabled={busyInviteId === currentInvite.inviteId} onClick={() => void handleInviteAction("game:invite:accept", currentInvite.inviteId)} className="rounded-lg bg-[#A3E635] px-4 py-2 text-sm font-bold text-[#090909] disabled:opacity-60">Aceptar</button><button type="button" disabled={busyInviteId === currentInvite.inviteId} onClick={() => void handleInviteAction("game:invite:reject", currentInvite.inviteId)} className="rounded-lg border border-[#3D3D3D] px-4 py-2 text-sm font-semibold disabled:opacity-60">Rechazar</button></div></div></div>}
+      {currentInvite && new Date(currentInvite.expiresAt).getTime() > now && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="invite-title">
+          <ElectricBorder color="#A3E635" glowColor="#BEF264" borderRadius={16} className="w-full max-w-sm" style={undefined}>
+            <div className="rounded-2xl border border-[#A3E635]/50 bg-[#141414] p-6 shadow-2xl">
+              <p className="text-xs font-bold tracking-[0.18em] text-[#A3E635]">INVITACIÓN PRIVADA</p>
+              <h3 id="invite-title" className="mt-3 text-xl font-black">{currentInvite.from.displayName} quiere jugar contigo</h3>
+              <p className="mt-2 text-sm text-[#A3A3A3]">La invitación caduca en {getRemainingTime(currentInvite.expiresAt, now)}.</p>
+              <div className="mt-6 flex gap-3">
+                <button type="button" disabled={busyInviteId === currentInvite.inviteId} onClick={() => void handleInviteAction("game:invite:accept", currentInvite.inviteId)} className="rounded-lg bg-[#A3E635] px-4 py-2 text-sm font-bold text-[#090909] disabled:opacity-60">Aceptar</button>
+                <button type="button" disabled={busyInviteId === currentInvite.inviteId} onClick={() => void handleInviteAction("game:invite:reject", currentInvite.inviteId)} className="rounded-lg border border-[#3D3D3D] px-4 py-2 text-sm font-semibold disabled:opacity-60">Rechazar</button>
+              </div>
+            </div>
+          </ElectricBorder>
+        </div>
+      )}
     </section>
   );
 }

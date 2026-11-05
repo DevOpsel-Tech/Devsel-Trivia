@@ -305,14 +305,12 @@ si o es creador o falta un jugador, muestra error*/
       const shouldCrumple =
         (isMultiplayer && currentQuestionNumber === totalQuestions) ||
         ("finished" in response && response.finished);
-      const shouldFoldSlowly =
-        isMultiplayer && currentQuestionNumber === totalQuestions;
 
       if (shouldCrumple) {
-        setIsFinalQuestionCrumpling(shouldFoldSlowly);
+        setIsFinalQuestionCrumpling(false);
         setIsQuestionCrumpling(true);
         await new Promise<void>((resolve) =>
-          window.setTimeout(resolve, shouldFoldSlowly ? 10000 : 620),
+          window.setTimeout(resolve, 620),
         );
         setIsQuestionCrumpling(false);
         setIsFinalQuestionCrumpling(false);

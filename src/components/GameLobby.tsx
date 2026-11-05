@@ -56,6 +56,7 @@ export function GameLobby({
   //Evitar crear varias salas mientras la petición está pendiente
   const [isCreating, setIsCreating] = useState(false);
   const [isCreatingIndividual, setIsCreatingIndividual] = useState(false);
+  const [isOnlinePlayersOpen, setIsOnlinePlayersOpen] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [isJoining, setIsJoining] = useState(false);
   const [deletingGameId, setDeletingGameId] = useState<number | null>(null);
@@ -305,6 +306,18 @@ export function GameLobby({
     return "border-[#A3E635]/40 bg-[#A3E635]/10 text-[#A3E635]";
   }
 
+  function getModeLabel(mode: GameHistoryItem["mode"]) {
+    return mode === "MULTIPLAYER"
+      ? "Jugado: multijugador"
+      : "Jugado: individual";
+  }
+
+  function getModeClass(mode: GameHistoryItem["mode"]) {
+    return mode === "MULTIPLAYER"
+      ? "border-violet-400/40 bg-violet-400/10 text-violet-200"
+      : "border-[#A3A3A3]/40 bg-[#A3A3A3]/10 text-[#D4D4D4]";
+  }
+
   function getFilterSummary(status: GameStatusFilter, count: number) {
     if (status === "ALL") return "en total";
     if (status === "WAITING") return "en espera";
@@ -415,27 +428,20 @@ export function GameLobby({
           : `${total} ${total === 1 ? "partida" : "partidas"} ${getFilterSummary(selectedStatus, total)}`}
       </p>
       <div className="mt-6 space-y-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="mr-1 w-full text-xs font-bold tracking-[0.18em] text-[#A3A3A3] sm:w-auto">
-            CREAR PARTIDA
-          </p>
-        <button
-          type="button"
-          onClick={handleCreateRoom}
-          disabled={isCreating}
-          className="rounded-lg bg-[#A3E635] px-4 py-2 text-sm font-bold text-[#090909] disabled:cursor-wait disabled:opacity-60"
-        >
-          {isCreating ? "Creando sala…" : "Crear sala"}
-        </button>
-
-        <button
-          type="button"
-          onClick={handleCreateIndividualGame}
-          disabled={isCreatingIndividual}
-          className="rounded-lg border border-[#A3E635] px-4 py-2 text-sm font-bold text-[#A3E635] disabled:cursor-wait disabled:opacity-60"
-        >
-          {isCreatingIndividual ? "Creando partida…" : "Jugar en solitario"}
-        </button>
+        <div className="rounded-xl border border-[#2B2B2B] bg-[#0D0D0D] p-4">
+          <p className="text-xs font-bold tracking-[0.18em] text-[#A3E635]">MULTIJUGADOR</p>
+          <p className="mt-1 text-sm text-[#A3A3A3]">Juega con otra persona por código o con una invitación privada.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <button type="button" onClick={handleCreateRoom} disabled={isCreating} className="rounded-lg border border-[#A3E635] bg-[#A3E635]/10 p-4 text-left transition hover:bg-[#A3E635]/15 disabled:cursor-wait disabled:opacity-60">
+              <span className="block text-sm font-bold text-[#A3E635]">{isCreating ? "Creando sala…" : "Crear sala con código"}</span>
+              <span className="mt-1 block text-xs leading-5 text-[#D4D4D4]">Comparte un código con quien quieras jugar.</span>
+            </button>
+            <button type="button" onClick={() => setIsOnlinePlayersOpen(true)} className="rounded-lg border border-[#3D3D3D] p-4 text-left transition hover:border-[#A3E635] hover:bg-[#141414]">
+              <span className="block text-sm font-bold text-[#F8FAFC]">Retar online</span>
+              <span className="mt-1 block text-xs leading-5 text-[#A3A3A3]">Elige un jugador disponible y envíale una invitación privada.</span>
+            </button>
+          </div>
+          <OnlinePlayers token={token} onOpenGame={onOpenGame} onRefreshHistory={handleRefreshHistory} isOpen={isOnlinePlayersOpen} onOpenChange={setIsOnlinePlayersOpen} />
         </div>
 
         <div className="rounded-xl border border-[#2B2B2B] bg-[#0D0D0D] p-4">
@@ -479,6 +485,16 @@ export function GameLobby({
           </p>
         </div>
 
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#2B2B2B] bg-[#0D0D0D] p-4">
+          <div>
+            <p className="text-xs font-bold tracking-[0.18em] text-[#A3A3A3]">PARTIDA INDIVIDUAL</p>
+            <p className="mt-1 text-sm text-[#A3A3A3]">Pon a prueba tus conocimientos a tu ritmo.</p>
+          </div>
+          <button type="button" onClick={handleCreateIndividualGame} disabled={isCreatingIndividual} className="rounded-lg border border-[#A3E635] px-4 py-2 text-sm font-bold text-[#A3E635] disabled:cursor-wait disabled:opacity-60">
+            {isCreatingIndividual ? "Creando partida…" : "Jugar en solitario"}
+          </button>
+        </div>
+
         <div className="flex justify-end">
           <button
             type="button"
@@ -490,11 +506,6 @@ export function GameLobby({
           </button>
         </div>
       </div>
-      <OnlinePlayers
-        token={token}
-        onOpenGame={onOpenGame}
-        onRefreshHistory={handleRefreshHistory}
-      />
       {error && (
         <p className="mt-4 text-sm text-red-300" role="alert">
           {error}
@@ -537,11 +548,14 @@ export function GameLobby({
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="font-semibold">Partida #{game.id}</p>
-                <span
-                  className={`rounded-full border px-2.5 py-1 text-xs font-bold ${getStatusClass(game.status)}`}
-                >
-                  {getStatusLabel(game.status)}
-                </span>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${getModeClass(game.mode)}`}>
+                    {getModeLabel(game.mode)}
+                  </span>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${getStatusClass(game.status)}`}>
+                    {getStatusLabel(game.status)}
+                  </span>
+                </div>
               </div>
 
               <p className="mt-1 text-sm text-[#A3A3A3]">
