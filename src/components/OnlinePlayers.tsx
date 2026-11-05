@@ -31,6 +31,11 @@ type InviteAck =
   | { ok: true; inviteId: string; expiresAt?: string; gameId?: number; status?: "WAITING" }
   | { ok: false; error: string };
 
+type PendingAcceptanceRecovery = {
+  inviteId: string;
+  retryUsed: boolean;
+};
+
 type OnlinePlayersProps = {
   token: string;
   onOpenGame: (gameId: number) => void;
@@ -80,6 +85,9 @@ function getRemainingTime(expiresAt: string, now: number) {
 export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onOpenChange }: OnlinePlayersProps) {
   const socketRef = useRef<Socket | null>(null);
   const acceptedGamesRef = useRef(new Set<number>());
+  const acceptanceRecoveryRef = useRef<PendingAcceptanceRecovery | null>(null);
+  const ignoredAcceptedInvitesRef = useRef(new Set<string>());
+  const recoverAcceptanceRef = useRef<() => void>(() => undefined);
   const lastRequestWasFirstPageRef = useRef(true);
   const requestPresenceRef = useRef<(cursor?: number) => void>(() => undefined);
   const [players, setPlayers] = useState<AvailablePlayer[]>([]);
@@ -90,6 +98,7 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
   const [incomingInvites, setIncomingInvites] = useState<IncomingInvite[]>([]);
   const [outgoingInvite, setOutgoingInvite] = useState<OutgoingInvite | null>(null);
   const [busyInviteId, setBusyInviteId] = useState<string | null>(null);
+  const [recoveryInviteId, setRecoveryInviteId] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
 
   const removeInvite = useCallback((inviteId: string) => {
@@ -100,6 +109,10 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
 
   const completeInviteAcceptance = useCallback((inviteId: string, gameId: number) => {
     removeInvite(inviteId);
+    if (acceptanceRecoveryRef.current?.inviteId === inviteId) {
+      acceptanceRecoveryRef.current = null;
+      setRecoveryInviteId(null);
+    }
     if (acceptedGamesRef.current.has(gameId)) return;
 
     acceptedGamesRef.current.add(gameId);
@@ -153,6 +166,7 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
       );
     };
     const onInviteAccepted = (payload: { inviteId: string; gameId: number; status: "WAITING" }) => {
+      if (ignoredAcceptedInvitesRef.current.has(payload.inviteId)) return;
       completeInviteAcceptance(payload.inviteId, payload.gameId);
     };
     const onInviteRejected = (payload: { inviteId: string }) => {
@@ -164,15 +178,22 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
       setBusyInviteId((current) => (current === payload.inviteId ? null : current));
     };
     const onInviteCancelled = (payload: { inviteId: string }) => {
+      clearAcceptanceRecovery(payload.inviteId);
       removeInvite(payload.inviteId);
       setNotice("La invitación se ha cancelado.");
     };
     const onInviteExpired = (payload: { inviteId: string }) => {
+      clearAcceptanceRecovery(payload.inviteId);
       removeInvite(payload.inviteId);
       setNotice("La invitación ha caducado.");
     };
 
-    socket.on("connect", requestFirstPage);
+    const onConnect = () => {
+      requestFirstPage();
+      recoverAcceptanceRef.current();
+    };
+
+    socket.on("connect", onConnect);
     socket.on("presence:available", onPresenceAvailable);
     socket.on("presence:changed", onPresenceChanged);
     socket.on("presence:error", onPresenceError);
@@ -183,7 +204,7 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
     socket.on("game:invite:expired", onInviteExpired);
 
     return () => {
-      socket.off("connect", requestFirstPage);
+      socket.off("connect", onConnect);
       socket.off("presence:available", onPresenceAvailable);
       socket.off("presence:changed", onPresenceChanged);
       socket.off("presence:error", onPresenceError);
@@ -206,7 +227,11 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
     }
   }, [incomingInvites, now]);
 
-  function emitInvite(event: "game:invite:send" | "game:invite:accept" | "game:invite:reject" | "game:invite:cancel", payload: Record<string, string | number>) {
+  function emitInvite(
+    event: "game:invite:send" | "game:invite:accept" | "game:invite:reject" | "game:invite:cancel",
+    payload: Record<string, string | number>,
+    onLateAck?: (ack: InviteAck) => void,
+  ) {
     return new Promise<InviteAck>((resolve) => {
       const socket = socketRef.current;
       if (!socket?.connected) {
@@ -230,9 +255,83 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
 
       socket.on("disconnect", onDisconnect);
       socket.emit(event, payload, (ack: InviteAck | undefined) => {
-        finish(ack ?? { ok: false, error: "INTERNAL_ERROR" });
+        const result = ack ?? { ok: false, error: "INTERNAL_ERROR" };
+        if (settled) {
+          onLateAck?.(result);
+          return;
+        }
+        finish(result);
       });
     });
+  }
+
+  function clearAcceptanceRecovery(inviteId: string) {
+    if (acceptanceRecoveryRef.current?.inviteId !== inviteId) return;
+    acceptanceRecoveryRef.current = null;
+    setRecoveryInviteId(null);
+  }
+
+  function handleAcceptanceAck(operation: PendingAcceptanceRecovery, ack: InviteAck) {
+    if (acceptanceRecoveryRef.current !== operation) return;
+
+    if (ack.ok) {
+      if (typeof ack.gameId === "number" && Number.isSafeInteger(ack.gameId) && ack.gameId > 0) {
+        completeInviteAcceptance(operation.inviteId, ack.gameId);
+        return;
+      }
+
+      setRecoveryInviteId(operation.inviteId);
+      setNotice("La aceptación pudo confirmarse, pero no se recibió el identificador de la sala. Comprueba tus partidas.");
+      return;
+    }
+
+    if (
+      operation.retryUsed ||
+      ack.error === "CONNECTION_LOST" ||
+      ack.error === "ACK_TIMEOUT"
+    ) {
+      setRecoveryInviteId(operation.inviteId);
+      setNotice("No se pudo confirmar el resultado de la aceptación. Comprueba tus partidas; no se creará otra sala automáticamente.");
+      return;
+    }
+
+    clearAcceptanceRecovery(operation.inviteId);
+    setNotice(inviteErrorMessage(ack.error));
+  }
+
+  function recoverPendingAcceptance() {
+    const operation = acceptanceRecoveryRef.current;
+    const socket = socketRef.current;
+    if (!operation || operation.retryUsed || !socket?.connected) return;
+
+    operation.retryUsed = true;
+    setRecoveryInviteId(operation.inviteId);
+    setBusyInviteId(operation.inviteId);
+    setNotice("Conexión recuperada. Comprobando el resultado de la aceptación…");
+    void emitInvite(
+      "game:invite:accept",
+      { inviteId: operation.inviteId },
+      (lateAck) => handleAcceptanceAck(operation, lateAck),
+    ).then((ack) => {
+      handleAcceptanceAck(operation, ack);
+      setBusyInviteId((current) => current === operation.inviteId ? null : current);
+    });
+  }
+
+  useEffect(() => {
+    recoverAcceptanceRef.current = recoverPendingAcceptance;
+  });
+
+  function openHistoryForRecovery() {
+    const inviteId = recoveryInviteId;
+    if (!inviteId) return;
+
+    ignoredAcceptedInvitesRef.current.add(inviteId);
+    clearAcceptanceRecovery(inviteId);
+    setIncomingInvites((current) => current.filter((invite) => invite.inviteId !== inviteId));
+    setBusyInviteId((current) => current === inviteId ? null : current);
+    onRefreshHistory();
+    onOpenChange(false);
   }
 
   async function handleSendInvite(player: AvailablePlayer) {
@@ -249,30 +348,46 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
   }
 
   async function handleInviteAction(event: "game:invite:accept" | "game:invite:reject" | "game:invite:cancel", inviteId: string) {
+    if (event === "game:invite:accept" && acceptanceRecoveryRef.current?.inviteId === inviteId) {
+      setNotice("La aceptación sigue pendiente de recuperación. Comprueba tus partidas o espera a que vuelva la conexión.");
+      return;
+    }
+
     setNotice("");
     setBusyInviteId(inviteId);
-    const ack = await emitInvite(event, { inviteId });
+    const operation = event === "game:invite:accept"
+      ? { inviteId, retryUsed: false }
+      : null;
+    if (operation) {
+      ignoredAcceptedInvitesRef.current.delete(inviteId);
+      acceptanceRecoveryRef.current = operation;
+    }
+
+    const ack = await emitInvite(
+      event,
+      { inviteId },
+      operation ? (lateAck) => handleAcceptanceAck(operation, lateAck) : undefined,
+    );
+
+    if (operation) {
+      handleAcceptanceAck(operation, ack);
+      setBusyInviteId((current) => current === inviteId ? null : current);
+      return;
+    }
+
     if (!ack.ok) {
       setBusyInviteId(null);
       setNotice(inviteErrorMessage(ack.error));
       return;
     }
-    if (event !== "game:invite:accept") {
-      setIncomingInvites((current) => current.filter((invite) => invite.inviteId !== inviteId));
-      setOutgoingInvite((current) => (current?.inviteId === inviteId ? null : current));
-    } else {
-      const gameId = ack.gameId;
-      if (typeof gameId === "number" && Number.isSafeInteger(gameId) && gameId > 0) {
-        completeInviteAcceptance(inviteId, gameId);
-      } else {
-        setNotice("La aceptación se confirmó, pero falta el identificador de la sala. Espera la notificación o inténtalo de nuevo.");
-      }
-    }
+    setIncomingInvites((current) => current.filter((invite) => invite.inviteId !== inviteId));
+    setOutgoingInvite((current) => (current?.inviteId === inviteId ? null : current));
     setBusyInviteId(null);
   }
 
   const currentInvite = incomingInvites[0];
   const outgoingExpired = outgoingInvite && new Date(outgoingInvite.expiresAt).getTime() <= now;
+  const isRecoveringCurrentInvite = currentInvite?.inviteId === recoveryInviteId;
 
   return (
     <section className="mt-6 rounded-xl border border-[#2B2B2B] bg-[#0D0D0D] p-4" aria-busy={isLoading}>
@@ -294,7 +409,7 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
             </button>
           </div>
           {presenceError && <p className="mt-3 text-sm text-amber-200" role="alert">{presenceError} <button type="button" onClick={() => requestPresenceRef.current()} className="underline">Reintentar</button></p>}
-          {notice && <p className="mt-3 text-sm text-[#D4D4D4]" role="status">{notice}</p>}
+          {notice && <p className="mt-3 text-sm text-[#D4D4D4]" role="status">{notice} {recoveryInviteId && <button type="button" onClick={openHistoryForRecovery} className="ml-1 font-semibold text-[#A3E635] underline">Ver mis partidas</button>}</p>}
 
           <ul className="mt-4 space-y-2" aria-label="Jugadores disponibles">
         {players.map((player) => (
@@ -321,8 +436,8 @@ export function OnlinePlayers({ token, onOpenGame, onRefreshHistory, isOpen, onO
               <h3 id="invite-title" className="mt-3 text-xl font-black">{currentInvite.from.displayName} quiere jugar contigo</h3>
               <p className="mt-2 text-sm text-[#A3A3A3]">La invitación caduca en {getRemainingTime(currentInvite.expiresAt, now)}.</p>
               <div className="mt-6 flex gap-3">
-                <button type="button" disabled={busyInviteId === currentInvite.inviteId} onClick={() => void handleInviteAction("game:invite:accept", currentInvite.inviteId)} className="rounded-lg bg-[#A3E635] px-4 py-2 text-sm font-bold text-[#090909] disabled:opacity-60">Aceptar</button>
-                <button type="button" disabled={busyInviteId === currentInvite.inviteId} onClick={() => void handleInviteAction("game:invite:reject", currentInvite.inviteId)} className="rounded-lg border border-[#3D3D3D] px-4 py-2 text-sm font-semibold disabled:opacity-60">Rechazar</button>
+                <button type="button" disabled={busyInviteId === currentInvite.inviteId || isRecoveringCurrentInvite} onClick={() => void handleInviteAction("game:invite:accept", currentInvite.inviteId)} className="rounded-lg bg-[#A3E635] px-4 py-2 text-sm font-bold text-[#090909] disabled:opacity-60">{isRecoveringCurrentInvite ? "Comprobando…" : "Aceptar"}</button>
+                <button type="button" disabled={busyInviteId === currentInvite.inviteId || isRecoveringCurrentInvite} onClick={() => void handleInviteAction("game:invite:reject", currentInvite.inviteId)} className="rounded-lg border border-[#3D3D3D] px-4 py-2 text-sm font-semibold disabled:opacity-60">Rechazar</button>
               </div>
             </div>
           </ElectricBorder>
