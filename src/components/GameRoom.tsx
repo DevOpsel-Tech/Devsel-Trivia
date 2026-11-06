@@ -5,6 +5,7 @@ import { env } from "../config/env";
 import { GameParticipants } from "./GameParticipants";
 import { GameResult } from "./GameResult";
 import { GameScoreboard } from "./GameScoreboard";
+import { OnlinePlayers } from "./OnlinePlayers";
 import {
   createIndividualGame,
   getGame,
@@ -287,6 +288,11 @@ si o es creador o falta un jugador, muestra error*/
     : game?.winnerUserId === userId
       ? "Ganaste"
       : "Perdiste";
+  const ignoreInvitationDirectoryState = useCallback(
+    (_isOpen: boolean) => undefined,
+    [],
+  );
+  const refreshHistoryAfterInvite = useCallback(() => undefined, []);
 
   async function handleAnswer(choiceId: number) {
     if (!currentQuestion || isAnswerSending) return;
@@ -367,6 +373,15 @@ si o es creador o falta un jugador, muestra error*/
 
   return (
     <section className="ambient-card relative z-10 rounded-3xl border border-[#2B2B2B] bg-[#141414] p-4 shadow-2xl shadow-black/30 sm:p-8">
+      <OnlinePlayers
+        token={token}
+        userId={userId}
+        onOpenGame={onOpenGame}
+        onRefreshHistory={refreshHistoryAfterInvite}
+        isOpen={false}
+        onOpenChange={ignoreInvitationDirectoryState}
+        showDirectory={false}
+      />
       <button
         type="button"
         onClick={onBack}

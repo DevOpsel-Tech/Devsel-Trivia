@@ -6,7 +6,6 @@ import { RegisterForm } from "./components/RegisterForm";
 import { GameLobby } from "./components/GameLobby";
 import { GameRoom } from "./components/GameRoom";
 import ElectricBorder from "./components/ElectricBorder";
-import LaserFlow from "./components/LaserFlow";
 import FlyingButton from "./components/FlyingButton";
 import LetterGlitch from "./components/LetterGlitch";
 import SplitFlapText from "./components/SplitFlapText";
@@ -268,7 +267,10 @@ function App() {
               flipsPerChar={7}
               glare={0.18}
               depth={0.65}
-              style={{ "--split-flap-font-size": "clamp(3rem, 13vw, 5.5rem)" }}
+              style={{
+                "--split-flap-font-size": "clamp(2.25rem, 12vw, 5.5rem)",
+                "--split-flap-gap": "clamp(3px, 1.5vw, 6px)",
+              }}
             />
           </div>
           <p className="mt-5 max-w-sm text-base leading-7 text-[#D4D4D4]">
@@ -424,26 +426,15 @@ function App() {
         </header>
 
         <ElectricBorder
+          className="relative z-10"
           color="#A3E635"
           glowColor="#BEF264"
           borderRadius={24}
           active={!prefersReducedMotion}
           style={undefined}
         >
-          <section className="ambient-card relative z-10 overflow-hidden rounded-3xl border border-[#2B2B2B] bg-[#141414] shadow-2xl shadow-black/30">
-          <LaserFlow
-            className="z-0 opacity-80"
-            style={{ position: "absolute", inset: 0 }}
-            color="#A3E635"
-            intensity={1.2}
-            speed={1}
-            beamWidth={1.2}
-            paused={prefersReducedMotion}
-            surfaceRef={undefined}
-            revealImage={undefined}
-            dpr={undefined}
-          />
-          <div className="relative z-10 grid lg:grid-cols-[1.2fr_0.8fr]">
+          <section className="ambient-card relative z-10 rounded-3xl border border-[#2B2B2B] bg-[#141414] shadow-2xl shadow-black/30">
+          <div className="relative z-10 grid overflow-hidden rounded-[23px] lg:grid-cols-[1.2fr_0.8fr]">
             <div className="p-8 sm:p-12">
               <div className="mb-8 flex items-center gap-2 text-sm font-bold text-[#A3E635]">
                 <span className="h-2 w-2 rounded-full bg-[#A3E635]" />

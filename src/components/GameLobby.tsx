@@ -441,7 +441,7 @@ export function GameLobby({
               <span className="mt-1 block text-xs leading-5 text-[#A3A3A3]">Elige un jugador disponible y envíale una invitación privada.</span>
             </button>
           </div>
-          <OnlinePlayers token={token} onOpenGame={onOpenGame} onRefreshHistory={handleRefreshHistory} isOpen={isOnlinePlayersOpen} onOpenChange={setIsOnlinePlayersOpen} />
+          <OnlinePlayers token={token} userId={userId} onOpenGame={onOpenGame} onRefreshHistory={handleRefreshHistory} isOpen={isOnlinePlayersOpen} onOpenChange={setIsOnlinePlayersOpen} />
         </div>
 
         <div className="rounded-xl border border-[#2B2B2B] bg-[#0D0D0D] p-4">
