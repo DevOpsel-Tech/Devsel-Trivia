@@ -1,6 +1,7 @@
 # Auditoría del backend completo
 
-**Fecha:** 2026-11-05
+**Fecha de auditoría:** 2026-11-05
+**Última revisión de estado:** 2026-11-06
 **Alcance:** revisión estática del backend del repositorio: API HTTP, autenticación/autorización, validación, controladores, servicios, Socket.IO, configuración, Prisma y migraciones, documentación y pruebas. No se modificó código ni se accedió a producción.
 **Límites:** no es una prueba de penetración, no se realizaron pruebas de carga ni se midió el rendimiento con volúmenes grandes. Los hallazgos de migraciones históricas dependen de la ruta de actualización y de si la tabla ya contiene cuentas.
 
@@ -8,7 +9,7 @@
 
 La aplicación tiene una estructura reconocible de rutas, controladores, servicios y esquemas, usa validación de entradas, Argon2 para contraseñas y JWT para autenticar peticiones. El acceso a partidas verifica participación y existen controles transaccionales y pruebas de concurrencia.
 
-No se observaron indicios de una vulnerabilidad crítica en la lectura realizada. Se identificaron riesgos relevantes de actualización de base de datos, abuso de registro y exposición potencial de JWT en logs de infraestructura. También hay oportunidades de mejora en sincronización de operaciones ya confirmadas, presencia, expiración de invitaciones y escalabilidad de ciertas consultas.
+No se observaron indicios de una vulnerabilidad crítica en la lectura realizada. Se identificaron riesgos relevantes de actualización de base de datos, abuso de registro y exposición potencial de JWT en logs de infraestructura. Los hallazgos A-06 y A-07 se corrigieron posteriormente en el commit `412f6e7`; permanecen oportunidades de mejora en presencia, expiración de invitaciones y escalabilidad de ciertas consultas.
 
 ## Hallazgos priorizados
 
@@ -19,70 +20,79 @@ No se observaron indicios de una vulnerabilidad crítica en la lectura realizada
 - **Evidencia:** [migration.sql](../prisma/migrations/20261015143436_fix_user_column/migration.sql#L9) elimina `passwordHas` y crea `passwordHash TEXT NOT NULL` sin copiar los valores. La migración anterior crea la tabla con `passwordHas` en [migration.sql](../prisma/migrations/20261015134420_add_user/migration.sql#L1).
 - **Impacto:** si esa migración se aplica sobre una base que ya tiene cuentas, se perderían los hashes existentes; además, añadir una columna `NOT NULL` sin valor por defecto puede hacer que PostgreSQL rechace la migración si hay filas.
 - **Recomendación:** confirmar qué migraciones se ejecutaron en cada entorno. Para entornos aún no migrados, probar una migración de renombrado/copia en una copia de una base poblada y validar el login tras la actualización. No reaplicar ni modificar migraciones ya desplegadas sin un procedimiento de recuperación.
+- **Seguimiento 2026-11-06:** se documentó el preflight para Render en [despliegue.md](despliegue.md). El hallazgo permanece abierto hasta verificar si la base objetivo es nueva o completar una prueba de actualización sobre una copia con usuarios.
 
-### A-02 — El registro público no tiene limitación de frecuencia
+### A-02 — El registro público no tiene limitación de frecuencia — Resuelto
 
-- **Severidad:** Media.
+- **Severidad original:** Media.
+- **Estado:** Resuelto el 2026-11-06.
 - **Filtros:** Seguridad, rendimiento.
 - **Evidencia:** `POST /api/auth/register` se monta sin middleware de rate limit en [auth.routes.ts](../src/routes/auth.routes.ts#L17). Cada alta calcula Argon2 en [auth.services.ts](../src/services/auth.services.ts#L7).
 - **Impacto:** un cliente puede solicitar repetidamente operaciones costosas de hash y consumir CPU/memoria; también puede generar cuentas no deseadas.
-- **Recomendación:** añadir limitación por IP/identidad en el borde o en la aplicación, con configuración coherente detrás del proxy y monitorización de rechazos.
+- **Resolución verificada:** `POST /api/auth/register` aplica un límite de cinco intentos por IP durante quince minutos fuera de desarrollo, devuelve `429`, `Retry-After` y el código `REGISTER_RATE_LIMITED`. El servidor configura `trust proxy` y hay una prueba automatizada para el sexto intento.
 
-### A-03 — Socket.IO permite JWT en query string
+### A-03 — Socket.IO permite JWT en query string — Resuelto
 
-- **Severidad:** Media, dependiente de la infraestructura.
+- **Severidad original:** Media, dependiente de la infraestructura.
+- **Estado:** Resuelto el 2026-11-06 tras confirmar la migración de los clientes frontend.
 - **Filtros:** Seguridad.
-- **Evidencia:** el handshake obtiene el token de `auth.token` o `query.token` en [index.ts](../src/sockets/index.ts#L108).
+- **Evidencia histórica:** el handshake aceptaba `auth.token` o `query.token`.
 - **Impacto:** los tokens en URL pueden quedar registrados en logs de proxy, APM o diagnóstico, aunque la aplicación no los escriba explícitamente.
-- **Recomendación:** preferir `auth.token` y revisar que proxies, balanceadores y herramientas de observabilidad no registren query strings sensibles. Si se elimina la compatibilidad con `query.token`, coordinarlo con los clientes existentes.
+- **Resolución verificada:** el handshake acepta exclusivamente `socket.handshake.auth.token`; existe una prueba de integración que rechaza un token enviado solo por query string. `GameLobby`, `GameRoom` y `OnlinePlayers` ya usan `auth: { token }`.
 
-### A-04 — Solicitudes de presencia pueden disparar trabajo de base de datos repetido
+### A-04 — Solicitudes de presencia pueden disparar trabajo de base de datos repetido — Resuelto
 
-- **Severidad:** Media.
+- **Severidad original:** Media.
+- **Estado:** Resuelto el 2026-11-06.
 - **Filtros:** Seguridad, rendimiento.
 - **Evidencia:** cada `presence:request` vuelve a refrescar presencia en [index.ts](../src/sockets/index.ts#L209); el refresco procesa todos los usuarios conectados en [index.ts](../src/sockets/index.ts#L55) y consulta participaciones en [presence.ts](../src/services/presence.ts#L123). No se aprecia limitación de frecuencia del evento.
 - **Impacto:** clientes que emitan el evento repetidamente pueden causar consultas y notificaciones más amplias que el usuario solicitante.
-- **Recomendación:** limitar o agrupar solicitudes por socket, actualizar el estado cuando cambie la partida y paginar/consultar solo lo necesario.
+- **Resolución verificada:** cada socket puede solicitar presencia una vez por segundo; las solicitudes adicionales responden con `presence:error` antes de iniciar el refresco y no consultan la base de datos. Hay una prueba Socket.IO de la ráfaga.
 
-### A-05 — El barrido de invitaciones vencidas es frecuente y no tiene índice global de expiración
+### A-05 — El barrido de invitaciones vencidas es frecuente y no tiene índice global de expiración — Resuelto
 
-- **Severidad:** Media, dependiente del volumen.
+- **Severidad original:** Media, dependiente del volumen.
+- **Estado:** Resuelto el 2026-11-06.
 - **Filtros:** Base de datos, rendimiento, fiabilidad.
 - **Evidencia:** se ejecuta cada segundo en [index.ts](../src/sockets/index.ts#L449) y busca invitaciones por `status` y `expiresAt` en [game-invitations.ts](../src/services/game-invitations.ts#L399). Los índices de [schema.prisma](../prisma/schema.prisma#L115) no incluyen directamente un índice global para ese filtro.
 - **Impacto:** el sondeo puede recorrer repetidamente filas históricas y añadir carga constante a PostgreSQL.
-- **Recomendación:** medir con datos representativos; considerar un índice parcial para pendientes por expiración, un intervalo menos frecuente o un trabajo basado en la siguiente fecha de vencimiento, y una política de retención.
+- **Resolución verificada:** el barrido global se ejecuta cada treinta segundos en vez de cada segundo y existe un índice global `status, expiresAt` para su consulta. Las operaciones de envío y aceptación siguen comprobando la caducidad de forma inmediata.
 
-### A-06 — La aceptación puede confirmarse en base de datos y devolver error después
+### A-06 — La aceptación puede confirmarse en base de datos y devolver error después — Resuelto
 
-- **Severidad:** Media.
+- **Severidad original:** Media.
+- **Estado:** Resuelto el 2026-11-05 en `412f6e7`.
 - **Filtros:** API Design, arquitectura, fiabilidad.
 - **Evidencia:** la transacción persiste la aceptación y crea la sala en [game-invitations.ts](../src/services/game-invitations.ts#L166). Después, el handler une sockets, emite eventos y actualiza presencia antes de enviar el ack; los fallos se traducen a `INTERNAL_ERROR` en [index.ts](../src/sockets/index.ts#L279).
 - **Impacto:** puede existir ya una sala y estar aceptada la invitación aunque el cliente reciba un error, lo que dificulta reintentos y puede dejar temporalmente al usuario sin navegación.
-- **Recomendación:** separar el resultado persistido de los efectos posteriores de Socket.IO y proporcionar recuperación idempotente del resultado aceptado.
+- **Resolución verificada:** los efectos Socket.IO posteriores se aíslan para que no cambien el resultado persistido, y una aceptación ya confirmada devuelve el resultado canónico de forma idempotente. Se añadieron pruebas de integración y de Socket.IO en el mismo commit.
 
-### A-07 — Fallos de sincronización de presencia pueden producir HTTP 500 tras una mutación confirmada
+### A-07 — Fallos de sincronización de presencia pueden producir HTTP 500 tras una mutación confirmada — Resuelto
 
-- **Severidad:** Media.
+- **Severidad original:** Media.
+- **Estado:** Resuelto el 2026-11-05 en `412f6e7`.
 - **Filtros:** API Design, fiabilidad.
 - **Evidencia:** se espera `refreshPresenceForOnlineUsers()` después de confirmar crear/unirse/eliminar/finalizar en [game.create.ts](../src/controllers/game.create.ts#L65), [game.join.ts](../src/controllers/game.join.ts#L32), [game.delete.ts](../src/controllers/game.delete.ts#L27) y [game.answer.ts](../src/controllers/game.answer.ts#L72).
 - **Impacto:** si falla la sincronización secundaria, la mutación principal ya persistió, pero el cliente puede recibir un error y repetirla.
-- **Recomendación:** separar los efectos secundarios de la respuesta HTTP o registrar el fallo sin presentar como fallida una operación ya confirmada.
+- **Resolución verificada:** las notificaciones y el refresco de presencia se ejecutan mediante `runPostCommitEffect`, que registra los fallos sin alterar la respuesta HTTP de una mutación ya confirmada. El commit añade pruebas específicas de rutas y sockets.
 
-### A-08 — La presencia puede conservar un nombre público desactualizado
+### A-08 — La presencia puede conservar un nombre público desactualizado — Resuelto
 
-- **Severidad:** Baja.
+- **Severidad original:** Baja.
+- **Estado:** Resuelto el 2026-11-06.
 - **Filtros:** API Design, fiabilidad.
 - **Evidencia:** el mapa en memoria guarda `displayName` al conectar en [presence.ts](../src/services/presence.ts#L20); `PATCH /api/me` actualiza la base de datos desde [auth.me.ts](../src/controllers/auth.me.ts#L23), pero no sincroniza la presencia activa.
 - **Impacto:** la lista de jugadores y las invitaciones pueden mostrar el nombre anterior hasta una reconexión.
-- **Recomendación:** sincronizar el nombre en presencia después de actualizar el perfil o documentar el comportamiento.
+- **Resolución verificada:** al actualizar `PATCH /api/me`, el nombre se sincroniza en presencia en memoria y se emite `presence:changed` a los sockets conectados. Hay una prueba del controlador que confirma la actualización de presencia.
 
-### A-09 — Una invitación vencida puede bloquear temporalmente otro envío como duplicado
+### A-09 — Una invitación vencida puede bloquear temporalmente otro envío como duplicado — Resuelto
 
-- **Severidad:** Baja.
+- **Severidad original:** Baja.
+- **Estado:** Resuelto el 2026-11-06.
 - **Filtros:** Base de datos, API Design.
 - **Evidencia:** la aplicación trata como vigentes las invitaciones `PENDING` con `expiresAt > now` en [game-invitations.ts](../src/services/game-invitations.ts#L103), pero el índice único parcial bloquea toda fila `PENDING` sin considerar `expiresAt` en [migration.sql](../prisma/migrations/20261105130000_add_game_invitations/migration.sql#L29). El error de unicidad se traduce a `INVITE_ALREADY_PENDING` en [game-invitations.ts](../src/services/game-invitations.ts#L153).
 - **Impacto:** en el intervalo entre el vencimiento y el barrido, un nuevo envío puede rechazarse con un código de duplicado.
-- **Recomendación:** expirar de forma transaccional las pendientes vencidas relevantes antes de crear, o traducir el conflicto diferenciando el caso expirado.
+- **Resolución verificada:** antes de crear una invitación, la transacción expira las pendientes vencidas de los usuarios implicados. Así se libera el índice único parcial antes de insertar el reemplazo; una prueba de integración cubre el flujo.
 
 ### A-10 — La selección aleatoria de preguntas puede escalar mal con un catálogo grande
 
@@ -91,6 +101,7 @@ No se observaron indicios de una vulnerabilidad crítica en la lectura realizada
 - **Evidencia:** [game.queries.ts](../src/services/game.queries.ts#L7) selecciona preguntas usando `ORDER BY RANDOM() LIMIT 5`.
 - **Impacto:** PostgreSQL puede tener que asignar orden aleatorio a una parte extensa del catálogo en cada partida.
 - **Recomendación:** mantenerlo mientras el catálogo sea pequeño y medirlo antes de cambiarlo; si crece, evaluar una estrategia de muestreo adecuada al tamaño y patrón de inserciones.
+- **Seguimiento 2026-11-06:** la base aislada de pruebas contiene 6 preguntas. No hay evidencia de volumen que justifique sustituir una selección aleatoria uniforme por una estrategia más compleja; el hallazgo se mantiene abierto para revisar con el tamaño real del catálogo de Render.
 
 ### A-11 — Presencia en memoria no sobrevive a reinicios ni se comparte entre instancias
 
@@ -99,6 +110,7 @@ No se observaron indicios de una vulnerabilidad crítica en la lectura realizada
 - **Evidencia:** la presencia vive en un `Map` local en [presence.ts](../src/services/presence.ts#L13). La documentación indica despliegue de una instancia; las invitaciones se restauran al reconectar en [index.ts](../src/sockets/index.ts#L190).
 - **Impacto:** después de un reinicio, usuarios que aún no reconectaron se consideran offline; una invitación persistida puede reaparecer aunque su emisor todavía no esté disponible. Con varias instancias, cada una tendría una vista incompleta.
 - **Recomendación:** validar disponibilidad del emisor al restaurar invitaciones y usar almacenamiento/adaptador compartido si se despliega más de una instancia.
+- **Seguimiento 2026-11-06:** el despliegue inicial de Render queda documentado para una única instancia en [despliegue.md](despliegue.md). El hallazgo permanece abierto como requisito previo para un futuro escalado horizontal; no se añade Redis sin esa necesidad.
 
 ## Evaluación de los siete filtros
 

@@ -12,7 +12,10 @@ import {
 } from "vitest";
 import jwt from "jsonwebtoken";
 import { initSockets } from "../../src/sockets/index.js";
-import { resetPresenceForTests } from "../../src/services/presence.js";
+import {
+  resetPresenceForTests,
+  updateOnlineUserDisplayName,
+} from "../../src/services/presence.js";
 import {
   acceptGameInvitation,
   cancelPendingInvitationsForReceiver,
@@ -171,6 +174,21 @@ describe("Socket.IO integración", () => {
       });
     });
   });
+
+  it("rechaza conexión cuando el token solo se envía en la query string", async () => {
+    const socket = registerClient(
+      Client(`http://localhost:${port}`, {
+        query: { token: tokenDe(1) },
+      }) as AppClientSocket,
+    );
+
+    const error = await new Promise<Error>((resolve) =>
+      socket.once("connect_error", resolve),
+    );
+
+    expect(error.message).toContain("requerido");
+  });
+
   it("rechaza conexión con token inválido", async () => {
     // Usamos un texto que no puede verificarse como JWT.
     const socket = registerClient(
@@ -200,6 +218,35 @@ describe("Socket.IO integración", () => {
       true,
     );
     socket.disconnect();
+  });
+
+  it("limita solicitudes de presencia repetidas del mismo socket", async () => {
+    const socket = await connectedClient(91);
+    const limited = new Promise<{ message: string }>((resolve) =>
+      socket.once("presence:error", resolve),
+    );
+
+    socket.emit("presence:request", { limit: 10 });
+    socket.emit("presence:request", { limit: 10 });
+
+    await expect(limited).resolves.toEqual({
+      message: "Espera antes de volver a solicitar la presencia",
+    });
+  });
+
+  it("notifica el nuevo nombre cuando cambia la presencia de un usuario online", async () => {
+    const socket = await connectedClient(92);
+    const changed = new Promise((resolve) =>
+      socket.once("presence:changed", resolve),
+    );
+
+    updateOnlineUserDisplayName(92, "Nombre actualizado");
+
+    await expect(changed).resolves.toEqual({
+      userId: 92,
+      displayName: "Nombre actualizado",
+      status: "AVAILABLE",
+    });
   });
 
   it("mantiene presencia online hasta que se desconecta la última pestaña", async () => {

@@ -628,6 +628,22 @@ app.use("/api/categories", categoryRouter);
  *               error:
  *                 code: EMAIL_ALREADY_EXISTS
  *                 message: El email ya está registrado
+ *       429:
+ *         description: Demasiados intentos de registro desde esta IP. Reintenta cuando indique Retry-After.
+ *         headers:
+ *           Retry-After:
+ *             description: Segundos restantes hasta que la IP pueda volver a intentarlo.
+ *             schema:
+ *               type: integer
+ *               minimum: 1
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *             example:
+ *               error:
+ *                 code: REGISTER_RATE_LIMITED
+ *                 message: Demasiados intentos de registro. Inténtalo de nuevo más tarde.
  *       500:
  *         description: Error interno del servidor
  *         content:

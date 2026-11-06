@@ -88,6 +88,18 @@ export async function createGameInvitation(
       async (tx) => {
         await lockUsers(tx, [senderId, receiverId]);
 
+        // El índice único parcial considera PENDING aunque ya haya vencido.
+        // Expiramos primero dentro de la misma transacción para que una fila
+        // vencida no bloquee la nueva invitación hasta el siguiente barrido.
+        await tx.gameInvitation.updateMany({
+          where: {
+            status: "PENDING",
+            expiresAt: { lte: now },
+            OR: [{ senderId }, { receiverId }],
+          },
+          data: { status: "EXPIRED", respondedAt: now },
+        });
+
         if (
           !isUserOnline(senderId) ||
           !isUserOnline(receiverId) ||

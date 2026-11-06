@@ -6,7 +6,7 @@ Las operaciones habituales de partidas siguen pasando por la API HTTP; presencia
 ## Conexión y autenticación
 
 - **Transporte:** WebSocket (Socket.IO)
-- **Autenticación:** Obligatoria en el *handshake*. Se acepta `auth.token` o `query.token`.
+- **Autenticación:** Obligatoria en el *handshake*, exclusivamente mediante `auth.token`. No se aceptan tokens en query string.
 - **Cabecera/forma:** `io.connect(url, { auth: { token: "<JWT>" } })`
 - **Comprobación:** Se verifica el JWT con `JWT_SECRET`.
 - **Errores al conectar:**
@@ -19,6 +19,7 @@ Las operaciones habituales de partidas siguen pasando por la API HTTP; presencia
 ### `presence:request`
 
 Solicita una página de usuarios disponibles, excluyendo al usuario autenticado.
+Cada socket puede solicitarla una vez por segundo; las solicitudes adicionales reciben `presence:error` y no desencadenan una consulta de presencia.
 
 - **Payload opcional:** `{ limit?: number, cursor?: number }`.
 - `limit` admite de 1 a 100 y por defecto es 50. `cursor` es el último `userId`

@@ -13,6 +13,13 @@ interface OnlineUser extends PresenceUser {
 }
 
 const onlineUsers = new Map<number, OnlineUser>();
+let presenceChangedEmitter: ((presence: PresenceUser) => void) | undefined;
+
+export function setPresenceChangedEmitter(
+  emitter: ((presence: PresenceUser) => void) | undefined,
+) {
+  presenceChangedEmitter = emitter;
+}
 
 export function registerOnlineSocket(
   user: PresenceUser,
@@ -88,6 +95,23 @@ export function updateOnlineUserStatus(
     displayName: user.displayName,
     status: user.status,
   };
+}
+
+export function updateOnlineUserDisplayName(
+  userId: number,
+  displayName: string,
+): PresenceUser | undefined {
+  const user = onlineUsers.get(userId);
+  if (!user || user.displayName === displayName) return undefined;
+
+  user.displayName = displayName;
+  const presence = {
+    userId: user.userId,
+    displayName: user.displayName,
+    status: user.status,
+  };
+  presenceChangedEmitter?.(presence);
+  return presence;
 }
 
 export function getAvailableUsersPage(
