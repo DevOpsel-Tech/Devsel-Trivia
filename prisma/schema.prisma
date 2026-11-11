@@ -114,6 +114,7 @@ model GameInvitation {
 
   @@index([senderId, createdAt])
   @@index([receiverId, status, expiresAt])
+  @@index([status, expiresAt])
   @@index([gameId])
 }
 

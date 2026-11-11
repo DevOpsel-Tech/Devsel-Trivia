@@ -211,6 +211,22 @@ describe("invitaciones de partidas - base de pruebas", () => {
     });
   });
 
+  it("expira una invitación vencida antes de crear su reemplazo", async () => {
+    const first = await createGameInvitation(senderId, receiverId);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    await prisma.gameInvitation.update({
+      where: { id: first.inviteId },
+      data: { expiresAt: new Date(Date.now() - 1_000) },
+    });
+
+    const replacement = await createGameInvitation(senderId, receiverId);
+    expect(replacement.ok).toBe(true);
+    expect(await prisma.gameInvitation.findUnique({ where: { id: first.inviteId } }))
+      .toMatchObject({ status: "EXPIRED" });
+  });
+
   it("serializa aceptaciones concurrentes y conserva una sola partida", async () => {
     const created = await createGameInvitation(senderId, receiverId);
     expect(created.ok).toBe(true);

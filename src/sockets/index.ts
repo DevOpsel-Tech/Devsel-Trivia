@@ -24,12 +24,15 @@ import {
   getOnlineUser,
   getOnlineUserIds,
   registerOnlineSocket,
+  setPresenceChangedEmitter,
   unregisterOnlineSocket,
   updateOnlineUserStatus,
 } from "../services/presence.js";
 
 export let io: AppServer | undefined;
 let invitationExpiryTimer: NodeJS.Timeout | undefined;
+const PRESENCE_REQUEST_COOLDOWN_MS = 1_000;
+const INVITATION_EXPIRY_SWEEP_MS = 30_000;
 
 async function runPostCommitEffect(
   operation: string,
@@ -117,9 +120,10 @@ export function initSockets(server: HttpServer): AppServer {
       credentials: true,
     },
   });
+  setPresenceChangedEmitter(emitPresenceChanged);
 
   io.use(async (socket: AppSocket, next) => {
-    const token = socket.handshake.auth?.token ?? socket.handshake.query?.token;
+    const token = socket.handshake.auth?.token;
 
     if (!token) {
       return next(new Error("Token de autenticación requerido"));
@@ -195,6 +199,7 @@ export function initSockets(server: HttpServer): AppServer {
 
   io.on("connection", (socket: AppSocket) => {
     const userId = socket.data.userId;
+    let nextPresenceRequestAt = 0;
     const registration = registerOnlineSocket(
       {
         userId,
@@ -235,6 +240,16 @@ export function initSockets(server: HttpServer): AppServer {
         });
         return;
       }
+
+      const now = Date.now();
+      if (now < nextPresenceRequestAt) {
+        socket.emit("presence:error", {
+          message: "Espera antes de volver a solicitar la presencia",
+        });
+        return;
+      }
+      nextPresenceRequestAt = now + PRESENCE_REQUEST_COOLDOWN_MS;
+
       try {
         await refreshPresenceForOnlineUsers();
         socket.emit(
@@ -516,7 +531,7 @@ export function initSockets(server: HttpServer): AppServer {
     void broadcastExpiredInvitations().catch((error) => {
       console.error("Error expiring game invitations:", error);
     });
-  }, 1000);
+  }, INVITATION_EXPIRY_SWEEP_MS);
   invitationExpiryTimer.unref();
 
   return io;
