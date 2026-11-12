@@ -81,8 +81,3 @@ instrucciones de [`backend/tests/README.md`](./backend/tests/README.md).
 No subas archivos `.env`, contraseÃ±as, tokens ni claves. Usa los archivos
 `.env.example` como referencia y configura los secretos en el entorno local o
 en el proveedor de despliegue.
-
-
-## Tecnologías
-
-- TypeScript (Node.js + Express + React + Prisma)
