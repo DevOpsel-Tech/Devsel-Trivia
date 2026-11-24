@@ -1,19 +1,33 @@
 ﻿# Devsel Trivia
 
-AplicaciÃ³n web de preguntas y respuestas con registro e inicio de sesiÃ³n,
+Aplicación web de preguntas y respuestas con registro e inicio de sesión,
 partidas individuales y partidas multijugador en tiempo real.
+
+**Aplicación web:** [trivia.devopsel.com](https://trivia.devopsel.com)
+
+## Despliegue en infraestructura propia
+
+La aplicación se aloja en un NAS QNAP mediante Container Station y Docker Compose, con tres servicios independientes: frontend, backend y PostgreSQL.
+
+- **Frontend:** React compilado y servido mediante Nginx.
+- **Backend:** API REST y Socket.IO para las partidas en tiempo real.
+- **Base de datos:** PostgreSQL en una red privada, con almacenamiento persistente y migraciones de Prisma al arrancar el backend.
+- **Acceso público:** HTTPS mediante Nginx Proxy Manager y Cloudflare.
+- **CI/CD:** GitHub Actions construye y publica las imágenes en GitHub Container Registry (GHCR). Las actualizaciones del NAS se gestionan mediante Docker Compose.
+
+La configuración de despliegue está en [`docker-compose.yml`](./docker-compose.yml) y la plantilla de variables en [`.env.example`](./.env.example). Las credenciales reales se mantienen fuera del repositorio.
 
 ## Estructura
 
-- [`backend/`](./backend/): API HTTP, autenticaciÃ³n, persistencia con PostgreSQL
-  y comunicaciÃ³n en tiempo real con Socket.IO.
-- [`frontend/`](./frontend/): aplicaciÃ³n web en React para jugar y consultar las
+- [`backend/`](./backend/): API HTTP, autenticación, persistencia con PostgreSQL
+  y comunicación en tiempo real con Socket.IO.
+- [`frontend/`](./frontend/): aplicación web en React para jugar y consultar las
   partidas.
 
 Cada carpeta es un proyecto independiente y tiene su propio `package.json` y
 README con instrucciones detalladas.
 
-## TecnologÃ­as
+## Tecnologías
 
 - **Backend:** Node.js 24, TypeScript, Express, Prisma, PostgreSQL y Socket.IO.
 - **Frontend:** React, TypeScript, Vite y Socket.IO Client.
@@ -36,7 +50,7 @@ Copy-Item .env.example .env
 ```
 
 Configura `DATABASE_URL` con la URL de PostgreSQL y `JWT_SECRET` con un secreto
-aleatorio en `backend/.env`. No compartas ni subas ese archivo. DespuÃ©s:
+aleatorio en `backend/.env`. No compartas ni subas ese archivo. Después:
 
 ```powershell
 npm run db:generate
@@ -44,8 +58,8 @@ npm run db:migrate:dev
 npm run dev
 ```
 
-El backend estarÃ¡ disponible en <http://localhost:3000>. Para preparar la base
-de datos o ejecutar pruebas de integraciÃ³n, consulta
+El backend estará disponible en <http://localhost:3000>. Para preparar la base
+de datos o ejecutar pruebas de integración, consulta
 [`backend/README.md`](./backend/README.md).
 
 ### Frontend
@@ -57,11 +71,11 @@ Copy-Item .env.example .env.local
 npm run dev
 ```
 
-Por defecto, `.env.example` apunta a `http://localhost:3000`. Si la API estÃ¡ en
-otra direcciÃ³n, actualiza `VITE_API_URL` y, si corresponde,
-`VITE_SOCKET_URL` en `frontend/.env.local`. Vite mostrarÃ¡ la direcciÃ³n local
-de la aplicaciÃ³n al arrancar. Consulta [`frontend/README.md`](./frontend/README.md)
-para mÃ¡s detalles.
+Por defecto, `.env.example` apunta a `http://localhost:3000`. Si la API está en
+otra dirección, actualiza `VITE_API_URL` y, si corresponde,
+`VITE_SOCKET_URL` en `frontend/.env.local`. Vite mostrará la dirección local
+de la aplicación al arrancar. Consulta [`frontend/README.md`](./frontend/README.md)
+para más detalles.
 
 ## Comprobaciones
 
@@ -72,12 +86,12 @@ npm run typecheck
 npm run build
 ```
 
-El backend tambiÃ©n incluye pruebas unitarias con `npm test`. Las pruebas de
-integraciÃ³n requieren configurar su base de datos de pruebas; sigue las
+El backend también incluye pruebas unitarias con `npm test`. Las pruebas de
+integración requieren configurar su base de datos de pruebas; sigue las
 instrucciones de [`backend/tests/README.md`](./backend/tests/README.md).
 
 ## Seguridad
 
-No subas archivos `.env`, contraseÃ±as, tokens ni claves. Usa los archivos
+No subas archivos `.env`, contraseñas, tokens ni claves. Usa los archivos
 `.env.example` como referencia y configura los secretos en el entorno local o
 en el proveedor de despliegue.
