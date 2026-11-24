@@ -1,0 +1,77 @@
+name: Build and Publish Docker Images
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: trivia-docker-production
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Autenticarse en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Construir backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          platforms: linux/amd64
+          load: true
+          tags: ghcr.io/devopsel-tech/devsel-trivia-backend:${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Construir frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          platforms: linux/amd64
+          load: true
+          tags: ghcr.io/devopsel-tech/devsel-trivia-frontend:${{ github.sha }}
+          build-args: |
+            VITE_API_URL=${{ vars.TRIVIA_PUBLIC_URL }}
+            VITE_SOCKET_URL=${{ vars.TRIVIA_PUBLIC_URL }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      # Publicamos únicamente cuando ambas imágenes
+      # se han construido correctamente.
+      - name: Publicar imágenes versionadas
+        env:
+          VERSION: ${{ github.sha }}
+        run: |
+          for COMPONENT in backend frontend; do
+            IMAGE="ghcr.io/devopsel-tech/devsel-trivia-${COMPONENT}"
+            docker push "${IMAGE}:${VERSION}"
+          done
+
+      - name: Actualizar etiquetas latest
+        env:
+          VERSION: ${{ github.sha }}
+        run: |
+          for COMPONENT in backend frontend; do
+            IMAGE="ghcr.io/devopsel-tech/devsel-trivia-${COMPONENT}"
+            docker tag "${IMAGE}:${VERSION}" "${IMAGE}:latest"
+            docker push "${IMAGE}:latest"
+          done
